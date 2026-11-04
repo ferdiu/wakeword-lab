@@ -1,0 +1,13 @@
+sample_rate: 16000
+clip_seconds: 1.0
+frame_length_ms: 25
+frame_step_ms: 10
+fft_length: 512
+mel_bins: 40
+lower_hz: 60
+upper_hz: 7600
+window_frames: 98
+threshold_target_fpr: 0.001
+seed: 42
+model: {width: 32, dropout: 0.15, epochs: 40, batch_size: 64, label_smoothing: 0.05, learning_rate: 0.001}
+augmentation: {copies_per_positive: 8, speed_min: 0.8, speed_max: 1.2, pitch_semitones: 3}

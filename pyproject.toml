@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "wakeword-lab"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.26", "scipy>=1.11", "PyYAML>=6"]
+[project.optional-dependencies]
+train = ["tensorflow>=2.16", "librosa>=0.10", "soundfile>=0.12"]
+tts = ["edge-tts>=6.1", "soundfile>=0.12"]
+dev = ["pytest>=8", "ruff>=0.5"]
+[project.scripts]
+wakeword-lab = "wakeword_lab.cli:main"
+[tool.setuptools.packages.find]
+where = ["src"]
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
