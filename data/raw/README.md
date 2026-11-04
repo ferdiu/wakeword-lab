@@ -1,0 +1,1 @@
+Place authorized WAV recordings in `positive/`, `negative/`, and optionally `noise/`. Use `metadata.csv` to assign stable `speaker_id` groups and optional `split` pins. See `metadata.csv.example` and the project README. These are local user-data directories; keep audio and private metadata out of Git.

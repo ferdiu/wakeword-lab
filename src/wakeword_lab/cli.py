@@ -1,28 +1,109 @@
-import argparse,json
+from __future__ import annotations
+import argparse
+import json
+import shutil
 from pathlib import Path
-import numpy as np
+import yaml
+
+
+def _project_init(project: Path, phrase: str):
+    for rel in ("data/raw/positive", "data/raw/negative", "data/raw/noise", "data/processed", "artifacts/experiments"):
+        (project / rel).mkdir(parents=True, exist_ok=True)
+    (project / "wakeword.json").write_text(json.dumps({"wake_word": phrase}, indent=2), encoding="utf-8")
+    default = Path(__file__).resolve().parents[2] / "configs/default.yaml"
+    if default.exists():
+        shutil.copy2(default, project / "wakeword.yaml")
+    else:
+        from .config import DEFAULT_CONFIG
+        (project / "wakeword.yaml").write_text(yaml.safe_dump(DEFAULT_CONFIG, sort_keys=False), encoding="utf-8")
+    metadata = project / "data/raw/metadata.csv"
+    if not metadata.exists():
+        metadata.write_text("path,speaker_id,group_id,split,locale,phrase_start_s,phrase_end_s\n", encoding="utf-8")
+    (project / "data/raw/README.md").write_text(
+        "Put one-second or phrase-length WAV recordings in positive/ and negative/; common sample "
+        "rates and mono/stereo files are converted to 16 kHz mono on ingest. Put ambient-only "
+        "WAV files in noise/. Use metadata.csv to group clips by speaker_id "
+        "and optionally pin a speaker/session group to train, validation or test.\n", encoding="utf-8")
+
 
 def main():
-    ap=argparse.ArgumentParser(prog='wakeword-lab'); sub=ap.add_subparsers(dest='cmd',required=True)
-    q=sub.add_parser('init'); q.add_argument('project'); q.add_argument('--wake-word',default='Hey Nova')
-    for cmd in ('prepare','train','export','evaluate','report'):
-        q=sub.add_parser(cmd); q.add_argument('project')
-    x=ap.parse_args(); p=Path(getattr(x,'project','.'))
-    if x.cmd=='init':
-        for d in ('data/raw/positive','data/raw/negative','data/raw/noise','data/processed','artifacts'): (p/d).mkdir(parents=True,exist_ok=True)
-        (p/'wakeword.json').write_text(json.dumps({'wake_word':x.wake_word},indent=2)); return
-    if x.cmd=='prepare':
-        from .dataset import prepare; prepare(p)
-    elif x.cmd=='train':
-        from .train import train; train(p)
-    elif x.cmd=='export':
-        from .export import export; export(p)
-    elif x.cmd=='evaluate':
-        import tensorflow as tf
-        from .metrics import classification_metrics
-        d=np.load(p/'data/processed/test.npz'); n=json.loads((p/'artifacts/normalization.json').read_text()); m=json.loads((p/'artifacts/model_metadata.json').read_text())
-        model=tf.keras.models.load_model(p/'artifacts/model.keras'); z=(d['x']-np.array(n['mean']))/np.array(n['std']); scores=model.predict(z[...,None],verbose=0).ravel()
-        (p/'artifacts/evaluation.json').write_text(json.dumps(classification_metrics(scores,d['y'],m['threshold']),indent=2))
-    elif x.cmd=='report':
-        for f in sorted((p/'artifacts').glob('*.json')): print(f'## {f.name}\n{f.read_text()}')
-if __name__=='__main__': main()
+    parser = argparse.ArgumentParser(prog="wakeword-lab", description="Train and package tiny offline wake-word models")
+    sub = parser.add_subparsers(dest="command", required=True)
+    init = sub.add_parser("init"); init.add_argument("project"); init.add_argument("--wake-word", default="Hey Nova")
+    prep = sub.add_parser("prepare"); prep.add_argument("project"); prep.add_argument("--config"); prep.add_argument("--seed", type=int); prep.add_argument("--no-augmentation", action="store_true")
+    synth = sub.add_parser("synthesize"); synth.add_argument("project"); synth.add_argument("--phrase", required=True); synth.add_argument("--variants-per-locale", type=int, default=24); synth.add_argument("--seed", type=int, default=42)
+    noise = sub.add_parser("generate-noise"); noise.add_argument("project"); noise.add_argument("--count", type=int, default=400); noise.add_argument("--seed", type=int, default=42)
+    train = sub.add_parser("train"); train.add_argument("project"); train.add_argument("--run-name", default="default"); train.add_argument("--config"); train.add_argument("--epochs", type=int); train.add_argument("--batch-size", type=int); train.add_argument("--width", type=int); train.add_argument("--dropout", type=float)
+    export = sub.add_parser("export"); export.add_argument("project"); export.add_argument("--run-name", default="default"); export.add_argument("--config")
+    evaluate = sub.add_parser("evaluate"); evaluate.add_argument("project"); evaluate.add_argument("--run-name", default="default")
+    experiment = sub.add_parser("experiment"); experiment.add_argument("project"); experiment.add_argument("--run-name", default="default"); experiment.add_argument("--config"); experiment.add_argument("--width", type=int); experiment.add_argument("--dropout", type=float)
+    sweep = sub.add_parser("sweep"); sweep.add_argument("project"); sweep.add_argument("--widths", default="8,12,16,24"); sweep.add_argument("--dropouts", default="0.1,0.15,0.2"); sweep.add_argument("--config")
+    stream = sub.add_parser("evaluate-stream"); stream.add_argument("project"); stream.add_argument("recordings_dir"); stream.add_argument("--run-name", default="default"); stream.add_argument("--annotations"); stream.add_argument("--vad-rms", type=float, default=0.008); stream.add_argument("--cooldown-ms", type=int, default=1500); stream.add_argument("--merge-gap", type=float, default=1.0); stream.add_argument("--threshold", type=float)
+    package = sub.add_parser("package-android"); package.add_argument("project"); package.add_argument("--run-name", default="default"); package.add_argument("--destination")
+    report = sub.add_parser("report"); report.add_argument("project")
+    compare = sub.add_parser("compare"); compare.add_argument("project")
+
+    args = parser.parse_args()
+    project = Path(getattr(args, "project", "."))
+    if args.command == "init":
+        _project_init(Path(args.project), args.wake_word)
+    elif args.command == "prepare":
+        from .dataset import prepare
+        print(json.dumps(prepare(project, seed=args.seed, config_path=args.config, augment=not args.no_augmentation)["summary"], indent=2))
+    elif args.command == "synthesize":
+        from .synthesize import synthesize
+        import asyncio
+        print(f"Generated {asyncio.run(synthesize(project, args.phrase, args.variants_per_locale, args.seed))} WAV files")
+    elif args.command == "generate-noise":
+        from .noise import generate_noise
+        generated = generate_noise(project, count=args.count, seed=args.seed)
+        print(f"Generated {len(generated)} one-second noise WAV files in {project / 'data/raw/noise'}")
+    elif args.command == "train":
+        from .train import train as run_train
+        run_train(project, epochs=args.epochs, batch_size=args.batch_size, run_name=args.run_name,
+                  config_path=args.config, width=args.width, dropout=args.dropout)
+    elif args.command == "export":
+        from .export import export as run_export
+        print(json.dumps(run_export(project, args.run_name, args.config), indent=2))
+    elif args.command == "evaluate":
+        from .evaluation import evaluate_test
+        print(json.dumps(evaluate_test(project, args.run_name), indent=2))
+    elif args.command == "experiment":
+        from .experiment import run_experiment
+        print(json.dumps(run_experiment(project, args.run_name, args.config, width=args.width, dropout=args.dropout), indent=2))
+    elif args.command == "sweep":
+        from .experiment import sweep as run_sweep
+        widths = [int(x) for x in args.widths.split(",") if x.strip()]
+        dropouts = [float(x) for x in args.dropouts.split(",") if x.strip()]
+        print(json.dumps(run_sweep(project, widths, dropouts, args.config), indent=2))
+    elif args.command == "evaluate-stream":
+        from .stream import evaluate_stream
+        print(json.dumps(evaluate_stream(project, args.recordings_dir, args.run_name, args.annotations, args.vad_rms, args.cooldown_ms, args.merge_gap, args.threshold), indent=2))
+    elif args.command == "package-android":
+        art = project / "artifacts/experiments" / args.run_name
+        dest = Path(args.destination) if args.destination else Path(__file__).resolve().parents[2] / "android/demo/src/main/assets"
+        dest.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(art / "wakeword_int8.tflite", dest / "wakeword_int8.tflite")
+        shutil.copy2(art / "model_metadata.json", dest / "model_metadata.json")
+        print(f"Packaged model + metadata in {dest}")
+    elif args.command == "report":
+        for file in sorted((project / "artifacts/experiments").glob("*/summary.json")):
+            print(f"## {file.parent.name}\n{file.read_text(encoding='utf-8')}")
+    elif args.command == "compare":
+        import csv
+        path = project / "artifacts/sweep_results.csv"
+        if not path.exists():
+            print("No sweep results found. Run `wakeword-lab sweep` first.")
+        else:
+            with path.open(newline="", encoding="utf-8") as stream:
+                rows = list(csv.DictReader(stream))
+            rows.sort(key=lambda row: (
+                int(row["validation_false_positives"] or 0),
+                -float(row["validation_recall"] or 0),
+                int(row["model_size_bytes"] or 0),
+            ))
+            print(json.dumps(rows, indent=2))
+
+
+if __name__ == "__main__":
+    main()

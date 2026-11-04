@@ -1,13 +1,39 @@
+seed: 42
 sample_rate: 16000
 clip_seconds: 1.0
 frame_length_ms: 25
 frame_step_ms: 10
 fft_length: 512
 mel_bins: 40
-lower_hz: 60
-upper_hz: 7600
-window_frames: 98
-threshold_target_fpr: 0.001
-seed: 42
-model: {width: 32, dropout: 0.15, epochs: 40, batch_size: 64, label_smoothing: 0.05, learning_rate: 0.001}
-augmentation: {copies_per_positive: 8, speed_min: 0.8, speed_max: 1.2, pitch_semitones: 3}
+lower_hz: 60.0
+upper_hz: 7600.0
+split:
+  train: 0.70
+  validation: 0.15
+  test: 0.15
+augmentation:
+  enabled: true
+  copies_per_positive: 10
+  speed_min: 0.80
+  speed_max: 1.20
+  pitch_semitones: 4.0
+  max_shift_ms: 200
+  reverb_probability: 0.35
+  noise_probability: 0.65
+  snr_min_db: 5.0
+  snr_max_db: 25.0
+dataset:
+  negative_hop_ms: 500
+  max_windows_per_recording: 80
+  noise_as_negative_train: true
+model:
+  width: 24
+  dropout: 0.15
+  epochs: 40
+  batch_size: 64
+  learning_rate: 0.001
+  label_smoothing: 0.05
+  early_stopping_patience: 7
+quantization:
+  calibration_samples: 200
+  target_validation_fpr: 0.001

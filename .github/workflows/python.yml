@@ -1,11 +1,28 @@
 name: Python
 on: [push, pull_request]
 jobs:
-  test:
+  unit:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: {python-version: '3.11'}
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install --upgrade pip
       - run: pip install -e '.[dev]'
-      - run: pytest
+      - run: timeout 90s python -m pytest -q
+
+  training-export-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e '.[train,dev]'
+      - run: timeout 15m python -m pytest -q tests/test_tf_integration.py

@@ -1,0 +1,4 @@
+path,speaker_id,group_id,split,locale,phrase_start_s,phrase_end_s
+my_take_01.wav,my_voice,my_voice_session_01,train,en-GB,0.35,0.92
+my_take_heldout.wav,my_voice,my_voice_session_02,test,en-GB,,
+tts_00001_en_IN_voice.wav,en-IN-voice,en-IN-voice,train,en-IN,,

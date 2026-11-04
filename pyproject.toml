@@ -1,19 +1,45 @@
 [build-system]
 requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
+
 [project]
 name = "wakeword-lab"
-version = "0.1.0"
+version = "0.2.0"
+description = "Reproducible tiny wake-word training, quantization and Android deployment laboratory"
+readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
-dependencies = ["numpy>=1.26", "scipy>=1.11", "PyYAML>=6"]
+dependencies = [
+  "numpy>=1.26",
+  "scipy>=1.11",
+  "PyYAML>=6.0",
+]
+
 [project.optional-dependencies]
-train = ["tensorflow>=2.16", "librosa>=0.10", "soundfile>=0.12"]
+train = [
+  "tensorflow>=2.16",
+  "librosa>=0.10",
+  "soundfile>=0.12",
+]
 tts = ["edge-tts>=6.1", "soundfile>=0.12"]
-dev = ["pytest>=8", "ruff>=0.5"]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+
 [project.scripts]
 wakeword-lab = "wakeword_lab.cli:main"
+wakeword-lab-synthesize = "wakeword_lab.synthesize:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]

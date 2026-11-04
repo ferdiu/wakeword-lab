@@ -4,7 +4,10 @@ from math import gcd
 
 def mono_resample(samples, sample_rate, target_rate=16000):
     x=np.asarray(samples,dtype=np.float32)
-    if x.ndim==2: x=x.mean(axis=1 if x.shape[1]<=8 else 0)
+    if x.ndim == 2:
+        # Audio files are normally [frames, channels]; averaging the smaller dimension
+        # also handles channel-first arrays and multichannel (>8) WAVs.
+        x = x.mean(axis=1 if x.shape[1] <= x.shape[0] else 0)
     if x.ndim!=1 or sample_rate<=0 or target_rate<=0: raise ValueError("invalid audio or sample rate")
     if sample_rate!=target_rate:
         g=gcd(sample_rate,target_rate); x=resample_poly(x,target_rate//g,sample_rate//g).astype(np.float32)
