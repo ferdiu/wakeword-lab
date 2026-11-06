@@ -31,7 +31,7 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     init = sub.add_parser("init"); init.add_argument("project"); init.add_argument("--wake-word", default="Hey Nova")
     prep = sub.add_parser("prepare"); prep.add_argument("project"); prep.add_argument("--config"); prep.add_argument("--seed", type=int); prep.add_argument("--no-augmentation", action="store_true")
-    synth = sub.add_parser("synthesize"); synth.add_argument("project"); synth.add_argument("--phrase", required=True); synth.add_argument("--variants-per-locale", type=int, default=24); synth.add_argument("--seed", type=int, default=42)
+    synth = sub.add_parser("synthesize"); synth.add_argument("project"); synth.add_argument("--phrase", required=True); synth.add_argument("--variants-per-locale", type=int, default=24); synth.add_argument("--seed", type=int, default=42); synth.add_argument("--locales", help="comma-separated locale override (e.g. it-IT); default is the built-in en-IN/en-US/en-GB/en-AU weighted pools")
     synth_neg = sub.add_parser("synthesize-negatives"); synth_neg.add_argument("project"); synth_neg.add_argument("--phrase", action="append"); synth_neg.add_argument("--phrases-file"); synth_neg.add_argument("--variants-per-locale", type=int, default=24); synth_neg.add_argument("--seed", type=int, default=42)
     record = sub.add_parser("record"); record.add_argument("project"); record.add_argument("--kind", choices=["positive", "negative", "noise"], default="positive"); record.add_argument("--speaker"); record.add_argument("--split", choices=["train", "validation", "test"]); record.add_argument("--sample-rate", type=int, default=16000); record.add_argument("--count", type=int)
     fetch = sub.add_parser("fetch-negatives"); fetch.add_argument("project"); fetch.add_argument("--count", type=int, default=200); fetch.add_argument("--seed", type=int, default=42); fetch.add_argument("--source", default="speech-commands-mini")
@@ -56,7 +56,8 @@ def main():
     elif args.command == "synthesize":
         from .synthesize import synthesize
         import asyncio
-        print(f"Generated {asyncio.run(synthesize(project, args.phrase, args.variants_per_locale, args.seed))} WAV files")
+        locales = [x.strip() for x in args.locales.split(",") if x.strip()] if args.locales else None
+        print(f"Generated {asyncio.run(synthesize(project, args.phrase, args.variants_per_locale, args.seed, locales))} WAV files")
     elif args.command == "synthesize-negatives":
         import asyncio
 

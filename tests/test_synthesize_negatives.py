@@ -106,6 +106,28 @@ def test_synthesize_positives_keep_phrase_timestamps(project, fake_tts):
         assert 0.0 <= float(row["phrase_start_s"]) < float(row["phrase_end_s"]) <= 1.0
 
 
+def test_synthesize_locales_override_uses_only_requested_locales(project, fake_tts, monkeypatch):
+    async def list_voices():
+        return [
+            {"Locale": "it-IT", "ShortName": "it-IT-VoiceA"},
+            {"Locale": "it-IT", "ShortName": "it-IT-VoiceB"},
+            {"Locale": "en-US", "ShortName": "en-US-VoiceA"},
+        ]
+
+    monkeypatch.setattr(fake_tts, "list_voices", list_voices)
+    count = asyncio.run(synthesize.synthesize(project, "Hey Nova", 3, 5, locales=["it-IT"]))
+    # Count scales with the number of requested locales (3 * 1), not the default 6x.
+    assert count == 3
+    rows = _metadata_rows(project)
+    assert len(rows) == 3
+    assert all(row["locale"] == "it-IT" for row in rows.values())
+
+
+def test_synthesize_locales_override_rejects_unknown_locale(project, fake_tts):
+    with pytest.raises(RuntimeError, match="no voices"):
+        asyncio.run(synthesize.synthesize(project, "Hey Nova", 1, 5, locales=["xx-YY"]))
+
+
 def test_read_phrases_file_skips_comments_and_blank_lines(tmp_path):
     path = tmp_path / "phrases.txt"
     path.write_text("# hard negatives\nhello there\n\n  not the wake phrase  \n", encoding="utf-8")

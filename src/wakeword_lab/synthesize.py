@@ -86,7 +86,7 @@ def _append_metadata(path: Path, rows: list[dict]) -> None:
 
 
 async def _generate_tts(project, phrases, out_dir_name, variants_per_locale, seed, label,
-                        intervals=True):
+                        intervals=True, locales=None):
     """Shared Edge TTS generation core for positive and negative synthesis."""
     try:
         import edge_tts
@@ -106,21 +106,31 @@ async def _generate_tts(project, phrases, out_dir_name, variants_per_locale, see
     out = project / "data/raw" / out_dir_name
     out.mkdir(parents=True, exist_ok=True)
     voices = await asyncio.wait_for(edge_tts.list_voices(), timeout=45)
-    pools = {
-        "en-IN": [v for v in voices if v["Locale"].startswith("en-IN")],
-        "en-US": [v for v in voices if v["Locale"].startswith("en-US")],
-        "en-GB": [v for v in voices if v["Locale"].startswith("en-GB")],
-        "en-AU": [v for v in voices if v["Locale"].startswith("en-AU")],
-    }
-    if any(not v for v in pools.values()):
-        raise RuntimeError("Edge TTS did not return one or more requested English voice locales")
+    if locales:
+        # Custom locale override (e.g. it-IT for Italian-accented English):
+        # uniform weights, count scales with the number of locales.
+        pools = {loc: [v for v in voices if v["Locale"].startswith(loc)] for loc in locales}
+        if any(not v for v in pools.values()):
+            raise RuntimeError(
+                f"Edge TTS returned no voices for one or more requested locales: {sorted(locales)}")
+        locale_weights = [(loc, 1) for loc in locales]
+        per_phrase = int(variants_per_locale) * len(locales)
+    else:
+        pools = {
+            "en-IN": [v for v in voices if v["Locale"].startswith("en-IN")],
+            "en-US": [v for v in voices if v["Locale"].startswith("en-US")],
+            "en-GB": [v for v in voices if v["Locale"].startswith("en-GB")],
+            "en-AU": [v for v in voices if v["Locale"].startswith("en-AU")],
+        }
+        if any(not v for v in pools.values()):
+            raise RuntimeError("Edge TTS did not return one or more requested English voice locales")
+        # Article's 3x en-IN weighting is represented as weighted locale selection per utterance.
+        locale_weights = [("en-IN", 3), ("en-US", 1), ("en-GB", 1), ("en-AU", 1)]
+        per_phrase = int(variants_per_locale) * 6
     rng = random.Random(seed)
-    # Article's 3x en-IN weighting is represented as weighted locale selection per utterance.
-    locale_weights = [("en-IN", 3), ("en-US", 1), ("en-GB", 1), ("en-AU", 1)]
     metadata_path = project / "data/raw/metadata.csv"
     run_id = uuid.uuid4().hex[:8]
     generated = 0
-    per_phrase = int(variants_per_locale) * 6
     with tempfile.TemporaryDirectory(prefix="wakeword-tts-") as temp_dir:
         temp_dir = Path(temp_dir)
         # Global index keeps filenames unique across phrases while leaving the
@@ -175,8 +185,9 @@ async def _generate_tts(project, phrases, out_dir_name, variants_per_locale, see
     return generated
 
 
-async def synthesize(project, phrase, variants_per_locale=24, seed=42):
-    return await _generate_tts(project, [phrase], "positive", variants_per_locale, seed, "tts")
+async def synthesize(project, phrase, variants_per_locale=24, seed=42, locales=None):
+    return await _generate_tts(
+        project, [phrase], "positive", variants_per_locale, seed, "tts", locales=locales)
 
 
 async def synthesize_negatives(project, phrases, variants_per_locale=24, seed=42):
