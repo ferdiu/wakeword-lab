@@ -13,7 +13,7 @@ gradle -p android :wakeword-sdk:testDebugUnitTest :wakeword-sdk:assembleRelease 
 ```
 
 - Lint config in `pyproject.toml` (ruff, line-length 100, E501 ignored). pytest `pythonpath = ["src"]` — no install needed to run tests.
-- Android toolchain: JDK 17, Gradle 8.13, AGP 8.13.2, Android SDK Platform/Build-Tools 36. CI is the source of truth (`.github/workflows/`).
+- Android toolchain: JDK 17, Gradle 8.13, AGP 8.13.2, Android SDK Platform/Build-Tools 36. CI is the source of truth (`.github/workflows/`). A Gradle wrapper (`android/gradlew`, 8.13) exists; JDK 17 must be active (`export JAVA_HOME=~/.gradle/jdks/eclipse_adoptium-17-amd64-linux.2` on this machine — system Java is 25 and AGP rejects it). SDK lives at `~/.android-sdk/sdk` via gitignored `android/local.properties`.
 
 ## Non-obvious constraints
 
