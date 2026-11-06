@@ -8,6 +8,7 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Handler
+import android.util.Log
 import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
@@ -28,6 +29,8 @@ class WakeWordDetector(
     private val listener: Listener,
     private val config: DetectorConfig = DetectorConfig()
 ) : Closeable {
+    private companion object { const val TAG = "WakeWordDetector" }
+
     interface Listener {
         fun onDetected(score: Float)
         fun onError(error: Throwable)
@@ -47,6 +50,9 @@ class WakeWordDetector(
     @Volatile private var audioRecord: AudioRecord? = null
     // model is read/written exclusively on modelExecutor.
     private var model: WakeWordModel? = null
+    // Debug heartbeat state, touched only on modelExecutor.
+    private var inferenceCount = 0
+    private var maxScoreSinceLog = 0f
 
     fun start() {
         synchronized(lifecycleLock) {
@@ -133,10 +139,17 @@ class WakeWordDetector(
                             try {
                                 if (running.get() && generation.get() == token) {
                                     val score = model?.scorePcm(window) ?: return@execute
+                                    maxScoreSinceLog = max(maxScoreSinceLog, score)
+                                    if (++inferenceCount >= 100) {
+                                        inferenceCount = 0
+                                        Log.d(TAG, "heartbeat: maxScore=${"%.3f".format(maxScoreSinceLog)} threshold=${model?.threshold}")
+                                        maxScoreSinceLog = 0f
+                                    }
                                     val now = SystemClock.elapsedRealtime()
                                     val previous = lastDetectionElapsedMs.get()
                                     if (score >= (model?.threshold ?: 1f) &&
                                         (previous == Long.MIN_VALUE || now - previous >= config.cooldownMs)) {
+                                        Log.i(TAG, "wake word detected, score=${"%.3f".format(score)}")
                                         lastDetectionElapsedMs.set(now)
                                         mainHandler.post {
                                             if (running.get() && generation.get() == token) listener.onDetected(score)
@@ -169,6 +182,7 @@ class WakeWordDetector(
     }
 
     private fun postError(token: Int, error: Throwable) {
+        Log.e(TAG, "detector error", error)
         mainHandler.post {
             if (generation.get() == token) listener.onError(error)
         }

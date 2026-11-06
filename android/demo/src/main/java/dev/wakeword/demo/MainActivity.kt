@@ -40,8 +40,18 @@ class MainActivity : Activity() {
     }
 
     private fun startListening() {
+        val missing = mutableListOf<String>()
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_MICROPHONE)
+            missing += Manifest.permission.RECORD_AUDIO
+        }
+        // Android 13+ hides foreground-service notifications without this runtime
+        // permission; detections are surfaced through that notification.
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            missing += Manifest.permission.POST_NOTIFICATIONS
+        }
+        if (missing.isNotEmpty()) {
+            requestPermissions(missing.toTypedArray(), REQUEST_MICROPHONE)
             return
         }
         val intent = Intent(this, WakeWordListeningService::class.java)
@@ -56,8 +66,8 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_MICROPHONE) {
-            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) startListening()
-            else status.text = "Microphone permission is required to listen."
+            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) startListening()
+            else status.text = "Microphone (and notification) permission is required to listen."
         }
     }
 
