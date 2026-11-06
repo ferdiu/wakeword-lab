@@ -2,6 +2,7 @@ import csv
 import re
 
 import numpy as np
+import pytest
 
 from wakeword_lab.cli import _project_init
 from wakeword_lab.record import run_recording_session
@@ -113,6 +114,26 @@ def test_empty_prompt_uses_default_count_of_twenty(tmp_path):
     assert remaining["n"] == 0
     assert len(list((project / "data/raw/positive").glob("*.wav"))) == 20
     assert len(_metadata_rows(project)) == 20
+
+
+def test_invalid_count_prompt_recovers_once(tmp_path):
+    project = _project(tmp_path)
+    saved = run_recording_session(
+        project, speaker="frank", count=None,
+        capture=lambda rate, max_s: np.zeros(rate, dtype=np.int16),
+        input_fn=_scripted_input(["lots", "1", ""]))
+    assert saved == 1
+
+
+def test_invalid_count_prompt_twice_exits_friendly(tmp_path, capsys):
+    project = _project(tmp_path)
+    with pytest.raises(SystemExit):
+        run_recording_session(
+            project, speaker="gina", count=None,
+            capture=lambda rate, max_s: np.zeros(rate, dtype=np.int16),
+            input_fn=_scripted_input(["lots", "more"]))
+    out = capsys.readouterr().out
+    assert "not a whole number" in out
 
 
 def test_negative_kind_lands_in_negative_folder(tmp_path):

@@ -2,16 +2,18 @@
 Generated speech is stored as 16 kHz mono WAV and recorded in metadata.csv.
 """
 from __future__ import annotations
+
 import argparse
 import asyncio
 import csv
 import os
 import random
 import shutil
-import uuid
 import subprocess
 import tempfile
+import uuid
 from pathlib import Path
+
 import numpy as np
 
 
@@ -92,8 +94,12 @@ async def _generate_tts(project, phrases, out_dir_name, variants_per_locale, see
         raise RuntimeError("Install the TTS extra with `pip install -e '.[tts]'` before synthesis") from error
     if variants_per_locale < 1:
         raise ValueError("variants_per_locale must be at least one")
-    if not phrases or any(not str(phrase).strip() for phrase in phrases):
+    if not phrases:
         raise ValueError("phrase cannot be empty")
+    for phrase in phrases:
+        # Reject None explicitly instead of coercing it into the literal phrase "None".
+        if phrase is None or not str(phrase).strip():
+            raise ValueError("phrase cannot be empty")
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg executable not found; install ffmpeg to convert Edge TTS audio to 16 kHz WAV")
     project = Path(project)

@@ -1,5 +1,6 @@
 import asyncio
 import csv
+import re
 import sys
 import types
 import wave
@@ -95,6 +96,9 @@ def test_synthesize_positives_keep_phrase_timestamps(project, fake_tts):
     assert count == 6
     wavs = sorted((project / "data/raw/positive").glob("tts_*.wav"))
     assert len(wavs) == 6
+    # Pin the exact positive filename layout: tts_<runid>_<index>_<voice>.wav.
+    pattern = re.compile(r"^tts_[0-9a-f]{8}_\d{5}_[A-Za-z0-9_]+\.wav$")
+    assert all(pattern.match(wav.name) for wav in wavs)
     rows = _metadata_rows(project)
     for wav in wavs:
         row = rows[wav.name]

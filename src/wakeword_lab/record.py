@@ -47,11 +47,16 @@ def record_take(sample_rate: int = 16000, max_seconds: float = MAX_TAKE_SECONDS)
     stop = threading.Event()
 
     def _callback(indata, frame_count, time_info, status):
+        if status:
+            print(f"Warning: audio input status {status}; frames may have been dropped.")
         blocks.append(indata.copy())
         state["frames"] += frame_count
 
     def _wait_for_enter():
-        input("Recording... press Enter to stop.")
+        try:
+            input("Recording... press Enter to stop.")
+        except EOFError:
+            pass  # stdin closed (e.g. piped input): treat it as a stop request
         stop.set()
 
     max_frames = int(round(max_seconds * sample_rate))
@@ -72,16 +77,29 @@ def record_take(sample_rate: int = 16000, max_seconds: float = MAX_TAKE_SECONDS)
     return np.ascontiguousarray(pcm, dtype=np.int16)
 
 
+def _prompt_count(input_fn) -> int:
+    """Ask for the take count, tolerating one non-numeric answer."""
+    for _attempt in range(2):
+        raw = input_fn("How many samples to record? [20]: ").strip()
+        if not raw:
+            return 20
+        try:
+            return int(raw)
+        except ValueError:
+            print(f"'{raw}' is not a whole number.")
+    raise SystemExit("Invalid sample count entered twice; aborting the session.")
+
+
 def run_recording_session(project, *, kind: str = "positive", speaker: str = "unknown",
                           split: str | None = None, sample_rate: int = 16000,
-                          count: int | None = None, seed: int = 42,
+                          count: int | None = None,
                           capture=None, input_fn=input) -> int:
     """Record ``count`` takes interactively and publish them under data/raw/<kind>/.
 
     ``capture`` and ``input_fn`` are injectable so tests can substitute fakes.
     Takes shorter than MIN_TAKE_SECONDS are rejected and do not consume the
-    count, so the user can redo them. ``seed`` is reserved for future take
-    ordering; sessions are otherwise deterministic given the same takes.
+    count, so the user can redo them. Sessions are deterministic given the
+    same takes.
     """
     if kind not in ("positive", "negative", "noise"):
         raise ValueError(f"kind must be positive, negative or noise, got {kind!r}")
@@ -93,8 +111,7 @@ def run_recording_session(project, *, kind: str = "positive", speaker: str = "un
     if capture is None:
         capture = record_take
     if count is None:
-        raw = input_fn("How many samples to record? [20]: ").strip()
-        count = int(raw) if raw else 20
+        count = _prompt_count(input_fn)
     if count < 1:
         raise ValueError("count must be at least one")
     project = Path(project)

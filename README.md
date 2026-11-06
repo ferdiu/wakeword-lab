@@ -103,7 +103,7 @@ Fetch one-second command-word clips from TensorFlow's mini_speech_commands archi
 wakeword-lab fetch-negatives ./my-wake-word --count 200 --seed 42
 ```
 
-This downloads the ~78 MB archive (single network step besides TTS, with a 300 s timeout), selects clips uniformly across the eight command-word folders and copies them into `negative/` as `sc_<word>__<original>.wav`. The filename-prefix grouping then keeps every command word inside one split partition. No metadata rows are added for these clips; the download is cached nowhere — rerun with the same seed for a reproducible selection.
+This downloads the ~174 MB archive (single network step besides TTS, with a 300 s timeout), selects clips uniformly across the eight command-word folders and copies them into `negative/` as `sc_<word>__<original>.wav`. The filename-prefix grouping then keeps every command word inside one split partition. No metadata rows are added for these clips; the download is cached nowhere — rerun with the same seed for a reproducible selection.
 
 ```bash
 wakeword-lab prepare ./my-wake-word
