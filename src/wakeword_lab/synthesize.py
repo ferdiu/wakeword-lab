@@ -147,12 +147,27 @@ async def _generate_tts(project, phrases, out_dir_name, variants_per_locale, see
             mp3 = temp_dir / f"{base}.mp3"
             wav_tmp = temp_dir / f"{base}.wav"
             wav = out / f"{base}.wav"
-            await asyncio.wait_for(
-                edge_tts.Communicate(
-                    phrase, speaker, rate=f"{rate:+d}%", pitch=f"{pitch:+d}Hz"
-                ).save(str(mp3)),
-                timeout=45,
-            )
+            try:
+                await asyncio.wait_for(
+                    edge_tts.Communicate(
+                        phrase, speaker, rate=f"{rate:+d}%", pitch=f"{pitch:+d}Hz"
+                    ).save(str(mp3)),
+                    timeout=45,
+                )
+            except Exception as first_error:
+                # Edge TTS occasionally drops a single utterance (NoAudioReceived,
+                # throttling); retry once with neutral prosody, then skip the
+                # utterance instead of aborting the whole batch.
+                try:
+                    await asyncio.wait_for(
+                        edge_tts.Communicate(phrase, speaker).save(str(mp3)),
+                        timeout=45,
+                    )
+                    print(f"warning: retried {base} with neutral rate/pitch after: {first_error}")
+                except Exception as retry_error:
+                    print(f"warning: skipping utterance {base}: {retry_error}")
+                    mp3.unlink(missing_ok=True)
+                    continue
             subprocess.run([
                 "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
                 "-i", str(mp3), "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(wav_tmp),

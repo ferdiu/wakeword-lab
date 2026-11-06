@@ -128,6 +128,25 @@ def test_synthesize_locales_override_rejects_unknown_locale(project, fake_tts):
         asyncio.run(synthesize.synthesize(project, "Hey Nova", 1, 5, locales=["xx-YY"]))
 
 
+def test_synthesize_skips_utterances_that_fail_twice(project, fake_tts, monkeypatch):
+    class FlakyCommunicate:
+        attempts = 0
+
+        def __init__(self, text, voice, rate=None, pitch=None):
+            self.attempts = 0
+
+        async def save(self, path):
+            FlakyCommunicate.attempts += 1
+            if FlakyCommunicate.attempts <= 2:  # fail the first utterance twice
+                raise RuntimeError("No audio was received")
+            Path(path).write_bytes(b"fake mp3 payload")
+
+    monkeypatch.setattr(fake_tts, "Communicate", FlakyCommunicate)
+    count = asyncio.run(synthesize.synthesize_negatives(project, ["hello there"], 1, 3))
+    assert count == 5  # one utterance skipped, the rest generated
+    assert len(list((project / "data/raw/negative").glob("neg_tts_*.wav"))) == 5
+
+
 def test_read_phrases_file_skips_comments_and_blank_lines(tmp_path):
     path = tmp_path / "phrases.txt"
     path.write_text("# hard negatives\nhello there\n\n  not the wake phrase  \n", encoding="utf-8")
