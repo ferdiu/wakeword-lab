@@ -33,6 +33,7 @@ class WakeWordDetector(
 
     interface Listener {
         fun onDetected(score: Float)
+        fun onScores(maxScore: Float, threshold: Float) {}
         fun onError(error: Throwable)
     }
 
@@ -50,6 +51,12 @@ class WakeWordDetector(
     @Volatile private var audioRecord: AudioRecord? = null
     // model is read/written exclusively on modelExecutor.
     private var model: WakeWordModel? = null
+    // Live detection-threshold override applied ahead of the model's packaged threshold.
+    @Volatile var thresholdOverride: Float? = null
+        set(value) {
+            validateThreshold(value)
+            field = value
+        }
     // Debug heartbeat state, touched only on modelExecutor.
     private var inferenceCount = 0
     private var maxScoreSinceLog = 0f
@@ -140,14 +147,21 @@ class WakeWordDetector(
                                 if (running.get() && generation.get() == token) {
                                     val score = model?.scorePcm(window) ?: return@execute
                                     maxScoreSinceLog = max(maxScoreSinceLog, score)
+                                    val effectiveThreshold = thresholdOverride ?: model?.threshold
                                     if (++inferenceCount >= 100) {
                                         inferenceCount = 0
-                                        Log.d(TAG, "heartbeat: maxScore=${"%.3f".format(maxScoreSinceLog)} threshold=${model?.threshold}")
+                                        val heartbeatMax = maxScoreSinceLog
                                         maxScoreSinceLog = 0f
+                                        Log.d(TAG, "heartbeat: maxScore=${"%.3f".format(heartbeatMax)} threshold=$effectiveThreshold")
+                                        mainHandler.post {
+                                            if (running.get() && generation.get() == token) {
+                                                listener.onScores(heartbeatMax, effectiveThreshold ?: 1f)
+                                            }
+                                        }
                                     }
                                     val now = SystemClock.elapsedRealtime()
                                     val previous = lastDetectionElapsedMs.get()
-                                    if (score >= (model?.threshold ?: 1f) &&
+                                    if (score >= (effectiveThreshold ?: 1f) &&
                                         (previous == Long.MIN_VALUE || now - previous >= config.cooldownMs)) {
                                         Log.i(TAG, "wake word detected, score=${"%.3f".format(score)}")
                                         lastDetectionElapsedMs.set(now)

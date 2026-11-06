@@ -19,6 +19,7 @@ class WakeWordListeningService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        active = this
         notificationManager = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             notificationManager.createNotificationChannel(
@@ -54,13 +55,21 @@ class WakeWordListeningService : Service() {
         detector = WakeWordDetector(this, object : WakeWordDetector.Listener {
             override fun onDetected(score: Float) {
                 notificationManager.notify(NOTIFICATION_ID, buildNotification("Wake word detected (${"%.2f".format(score)})"))
+                uiListener?.invoke("wake word detected, score=${"%.3f".format(score)}")
+            }
+
+            override fun onScores(maxScore: Float, threshold: Float) {
+                uiListener?.invoke("heartbeat: maxScore=${"%.3f".format(maxScore)} threshold=$threshold")
             }
 
             override fun onError(error: Throwable) {
+                uiListener?.invoke("detector error: ${error.message ?: error.javaClass.simpleName}")
                 notificationManager.notify(NOTIFICATION_ID, buildNotification("Wake-word listener stopped: ${error.message ?: error.javaClass.simpleName}"))
                 stopSelf()
             }
         })
+        // A threshold chosen in the UI before the service existed takes effect on this run.
+        pendingThresholdOverride?.let { detector?.thresholdOverride = it }
         try {
             detector?.start()
         } catch (error: Throwable) {
@@ -71,6 +80,7 @@ class WakeWordListeningService : Service() {
     }
 
     override fun onDestroy() {
+        if (active === this) active = null
         detector?.close()
         detector = null
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -78,6 +88,11 @@ class WakeWordListeningService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /** Live threshold override; forwarded to the detector while it is running. */
+    fun setThreshold(value: Float?) {
+        detector?.thresholdOverride = value
+    }
 
     private fun buildNotification(message: String): Notification {
         val stopIntent = Intent(this, WakeWordListeningService::class.java).setAction(ACTION_STOP)
@@ -103,5 +118,11 @@ class WakeWordListeningService : Service() {
         const val ACTION_STOP = "dev.wakeword.lab.action.STOP"
         private const val CHANNEL_ID = "wakeword-listening"
         private const val NOTIFICATION_ID = 8401
+
+        /** Receives detector log lines (heartbeat, detections, errors); always on the main thread. */
+        @Volatile var uiListener: ((String) -> Unit)? = null
+        @Volatile var active: WakeWordListeningService? = null
+        /** Threshold chosen before the service starts; applied when the detector is created. */
+        @Volatile var pendingThresholdOverride: Float? = null
     }
 }

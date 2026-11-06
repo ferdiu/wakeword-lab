@@ -1,5 +1,10 @@
 package dev.wakeword.lab
 
+/** A threshold override must be a valid sigmoid score (or null to clear the override). */
+internal fun validateThreshold(value: Float?) {
+    require(value == null || value in 0f..1f) { "thresholdOverride must be in [0,1]" }
+}
+
 data class DetectorConfig(
     val sampleRate: Int = 16_000,
     val windowSamples: Int = 16_000,
