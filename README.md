@@ -48,6 +48,12 @@ wakeword-lab synthesize ./my-wake-word --phrase 'Hey Nova' --variants-per-locale
 
 Edge TTS makes network requests to Microsoft's service. The rest of the pipeline runs locally. TTS utterances are marked as **training-only** in `metadata.csv`; a coarse energy-VAD estimates phrase boundaries so the complete utterance is kept inside the one-second training window. Phrases that cannot fit are rejected. Inspect the generated WAVs and timing metadata; this is not a general forced aligner. Do not use synthetic variants as held-out test data.
 
+For optional interactive microphone recording, install the record extra (sounddevice + soundfile):
+
+```bash
+pip install -e '.[record]'
+```
+
 ## 2. Prepare audio data
 
 Put positive recordings of the wake phrase in `data/raw/positive/`, non-wake speech and ambient audio in `data/raw/negative/`, and optional background-only recordings in `data/raw/noise/`. Input WAV files may be mono/stereo and at supported sample rates; they are resampled/downmixed on ingest. Use real recordings from different speakers, distances, devices and rooms. Keep the final test set independent from choices made during training.
@@ -66,6 +72,38 @@ other_speaker.wav,speaker_heldout_01,speaker_heldout_01,test,en-GB,,
 `path` is matched by filename. `speaker_id` records who spoke. By default, it is also the split group, so all recordings from one speaker stay in one partition. Optional `group_id` overrides that split unit: use it for a recording session when evaluating a personalized detector on new sessions from the same speaker (as in the example), or set it equal to `speaker_id` for strict speaker-independent evaluation. Keep positive and negative recordings from the same capture session in the same `group_id`. `split` may be blank or one of `train`, `validation`, `test`; it pins the entire group to that split. The default when metadata is missing is the part of the filename before `__` (for example, `speaker01__take02.wav`). Do not accidentally give clips from the same recording session different group IDs.
 
 The `noise/` folder contains background-only recordings. By default, short snippets from training-partition noise recordings are added as pure negative training examples and are also eligible to be mixed into augmented positives. `wakeword-lab generate-noise` creates synthetic colored-noise/fan/hum examples here. They never enter validation/test by default. Put independent held-out ambient recordings in `negative/` when you want them to contribute to validation/test false-accept estimates.
+
+### Recording from a microphone
+
+With the record extra installed, capture takes interactively straight into the raw folders:
+
+```bash
+wakeword-lab record ./my-wake-word --kind positive --speaker alice --count 20
+```
+
+Each take is saved as a 16 kHz mono pcm16 WAV named `<speaker>__rec_<runid>_<index>.wav` and tracked in `metadata.csv` (one session group per run). Takes are capped at 10 seconds; takes shorter than 0.3 s are rejected and can be redone without consuming the count. `--kind` also accepts `negative` and `noise`. Use `--split train|validation|test` to pin the whole session group to one partition; leave it blank to let the automatic group splitting assign it. When `--count` is omitted you are prompted (default 20).
+
+### Synthetic hard negatives
+
+Generate non-wake speech utterances with the same Edge TTS voices as positive synthesis:
+
+```bash
+wakeword-lab synthesize-negatives ./my-wake-word \
+  --phrase 'hello there' --phrase 'what time is it' --variants-per-locale 8
+# or: --phrases-file negatives.txt  (one phrase per line, # comments allowed)
+```
+
+Each phrase yields `variants_per_locale * 6` utterances and clips are written to `negative/` with a `neg_tts_` prefix, marked **training-only** in `metadata.csv` without phrase timestamps — negatives are windowed at the configured hop during preparation. Requires the `tts` extra and `ffmpeg` like positive synthesis.
+
+### Dataset hard negatives
+
+Fetch one-second command-word clips from TensorFlow's mini_speech_commands archive as hard negatives:
+
+```bash
+wakeword-lab fetch-negatives ./my-wake-word --count 200 --seed 42
+```
+
+This downloads the ~78 MB archive (single network step besides TTS, with a 300 s timeout), selects clips uniformly across the eight command-word folders and copies them into `negative/` as `sc_<word>__<original>.wav`. The filename-prefix grouping then keeps every command word inside one split partition. No metadata rows are added for these clips; the download is cached nowhere — rerun with the same seed for a reproducible selection.
 
 ```bash
 wakeword-lab prepare ./my-wake-word

@@ -22,6 +22,7 @@ train = [
   "soundfile>=0.12",
 ]
 tts = ["edge-tts>=6.1", "soundfile>=0.12"]
+record = ["sounddevice>=0.4", "soundfile>=0.12"]
 dev = ["pytest>=8.0", "ruff>=0.5"]
 
 [project.scripts]

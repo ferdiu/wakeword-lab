@@ -83,19 +83,21 @@ def _append_metadata(path: Path, rows: list[dict]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-async def synthesize(project, phrase, variants_per_locale=24, seed=42):
+async def _generate_tts(project, phrases, out_dir_name, variants_per_locale, seed, label,
+                        intervals=True):
+    """Shared Edge TTS generation core for positive and negative synthesis."""
     try:
         import edge_tts
     except ImportError as error:
         raise RuntimeError("Install the TTS extra with `pip install -e '.[tts]'` before synthesis") from error
     if variants_per_locale < 1:
         raise ValueError("variants_per_locale must be at least one")
-    if not phrase.strip():
+    if not phrases or any(not str(phrase).strip() for phrase in phrases):
         raise ValueError("phrase cannot be empty")
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg executable not found; install ffmpeg to convert Edge TTS audio to 16 kHz WAV")
     project = Path(project)
-    out = project / "data/raw/positive"
+    out = project / "data/raw" / out_dir_name
     out.mkdir(parents=True, exist_ok=True)
     voices = await asyncio.wait_for(edge_tts.list_voices(), timeout=45)
     pools = {
@@ -111,16 +113,21 @@ async def synthesize(project, phrase, variants_per_locale=24, seed=42):
     locale_weights = [("en-IN", 3), ("en-US", 1), ("en-GB", 1), ("en-AU", 1)]
     metadata_path = project / "data/raw/metadata.csv"
     run_id = uuid.uuid4().hex[:8]
+    generated = 0
+    per_phrase = int(variants_per_locale) * 6
     with tempfile.TemporaryDirectory(prefix="wakeword-tts-") as temp_dir:
         temp_dir = Path(temp_dir)
-        for index in range(int(variants_per_locale) * 6):
+        # Global index keeps filenames unique across phrases while leaving the
+        # single-phrase positive layout (tts_<runid>_<index>_<voice>) unchanged.
+        for index in range(per_phrase * len(phrases)):
+            phrase = phrases[index // per_phrase]
             locale = rng.choices([x[0] for x in locale_weights], weights=[x[1] for x in locale_weights])[0]
             voice = rng.choice(pools[locale])
             rate = rng.randint(-15, 15)
             pitch = rng.randint(-3, 3)
             speaker = voice["ShortName"]
             safe_speaker = speaker.replace("-", "_")
-            base = f"tts_{run_id}_{index:05d}_{safe_speaker}"
+            base = f"{label}_{run_id}_{index:05d}_{safe_speaker}"
             mp3 = temp_dir / f"{base}.mp3"
             wav_tmp = temp_dir / f"{base}.wav"
             wav = out / f"{base}.wav"
@@ -140,19 +147,51 @@ async def synthesize(project, phrase, variants_per_locale=24, seed=42):
             generated_audio, generated_rate = sf.read(wav_tmp, dtype="float32", always_2d=False)
             if generated_rate != 16000:
                 raise RuntimeError(f"ffmpeg produced {generated_rate} Hz instead of 16000 Hz for {base}")
-            phrase_start, phrase_end = _speech_interval(generated_audio, generated_rate)
-            # Atomic publish: an interrupted conversion cannot leave an untracked positive WAV
-            # that a later dataset scan might incorrectly assign to validation or test.
+            row = {
+                "path": wav.name, "speaker_id": speaker, "split": "train", "locale": locale,
+            }
+            if intervals:
+                # Only positives need phrase boundaries: the dataset crops the
+                # complete utterance into the one-second context. Negatives are
+                # windowed at the configured hop, so timestamps are omitted.
+                row["phrase_start_s"], row["phrase_end_s"] = _speech_interval(
+                    generated_audio, generated_rate)
+            # Atomic publish: an interrupted conversion cannot leave an untracked
+            # WAV that a later dataset scan might incorrectly assign to validation
+            # or test.
             shutil.move(wav_tmp, wav)
             try:
-                _append_metadata(metadata_path, [{
-                    "path": wav.name, "speaker_id": speaker, "split": "train", "locale": locale,
-                    "phrase_start_s": phrase_start, "phrase_end_s": phrase_end,
-                }])
+                _append_metadata(metadata_path, [row])
             except Exception:
                 wav.unlink(missing_ok=True)
                 raise
-    return int(variants_per_locale) * 6
+            generated += 1
+    return generated
+
+
+async def synthesize(project, phrase, variants_per_locale=24, seed=42):
+    return await _generate_tts(project, [phrase], "positive", variants_per_locale, seed, "tts")
+
+
+async def synthesize_negatives(project, phrases, variants_per_locale=24, seed=42):
+    """Generate hard-negative speech utterances under data/raw/negative/.
+
+    Each phrase yields ``variants_per_locale * 6`` utterances using the same
+    locale weights/pools as positive synthesis. Negative clips skip phrase
+    interval detection and metadata timestamps; they stay training-only.
+    """
+    return await _generate_tts(
+        project, list(phrases), "negative", variants_per_locale, seed, "neg_tts", intervals=False)
+
+
+def _read_phrases_file(path) -> list[str]:
+    """Read one phrase per line; blank lines and ``#`` comments are skipped."""
+    phrases = []
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            phrases.append(line)
+    return phrases
 
 
 def main():

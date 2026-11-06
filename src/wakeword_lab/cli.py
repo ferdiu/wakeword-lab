@@ -32,6 +32,9 @@ def main():
     init = sub.add_parser("init"); init.add_argument("project"); init.add_argument("--wake-word", default="Hey Nova")
     prep = sub.add_parser("prepare"); prep.add_argument("project"); prep.add_argument("--config"); prep.add_argument("--seed", type=int); prep.add_argument("--no-augmentation", action="store_true")
     synth = sub.add_parser("synthesize"); synth.add_argument("project"); synth.add_argument("--phrase", required=True); synth.add_argument("--variants-per-locale", type=int, default=24); synth.add_argument("--seed", type=int, default=42)
+    synth_neg = sub.add_parser("synthesize-negatives"); synth_neg.add_argument("project"); synth_neg.add_argument("--phrase", action="append"); synth_neg.add_argument("--phrases-file"); synth_neg.add_argument("--variants-per-locale", type=int, default=24); synth_neg.add_argument("--seed", type=int, default=42)
+    record = sub.add_parser("record"); record.add_argument("project"); record.add_argument("--kind", choices=["positive", "negative", "noise"], default="positive"); record.add_argument("--speaker"); record.add_argument("--split", choices=["train", "validation", "test"]); record.add_argument("--sample-rate", type=int, default=16000); record.add_argument("--count", type=int); record.add_argument("--seed", type=int, default=42)
+    fetch = sub.add_parser("fetch-negatives"); fetch.add_argument("project"); fetch.add_argument("--count", type=int, default=200); fetch.add_argument("--seed", type=int, default=42); fetch.add_argument("--source", default="speech-commands-mini")
     noise = sub.add_parser("generate-noise"); noise.add_argument("project"); noise.add_argument("--count", type=int, default=400); noise.add_argument("--seed", type=int, default=42)
     train = sub.add_parser("train"); train.add_argument("project"); train.add_argument("--run-name", default="default"); train.add_argument("--config"); train.add_argument("--epochs", type=int); train.add_argument("--batch-size", type=int); train.add_argument("--width", type=int); train.add_argument("--dropout", type=float)
     export = sub.add_parser("export"); export.add_argument("project"); export.add_argument("--run-name", default="default"); export.add_argument("--config")
@@ -54,6 +57,28 @@ def main():
         from .synthesize import synthesize
         import asyncio
         print(f"Generated {asyncio.run(synthesize(project, args.phrase, args.variants_per_locale, args.seed))} WAV files")
+    elif args.command == "synthesize-negatives":
+        import asyncio
+
+        from .synthesize import _read_phrases_file, synthesize_negatives
+        phrases = list(args.phrase or [])
+        if args.phrases_file:
+            phrases += _read_phrases_file(args.phrases_file)
+        if not phrases:
+            raise SystemExit("synthesize-negatives needs at least one --phrase or --phrases-file")
+        print(f"Generated {asyncio.run(synthesize_negatives(project, phrases, args.variants_per_locale, args.seed))} WAV files")
+    elif args.command == "record":
+        import os
+
+        from .record import run_recording_session
+        speaker = args.speaker or os.environ.get("USER") or "unknown"
+        run_recording_session(project, kind=args.kind, speaker=speaker, split=args.split,
+                              sample_rate=args.sample_rate, count=args.count, seed=args.seed)
+    elif args.command == "fetch-negatives":
+        from .fetch_negatives import fetch_negatives
+        if args.source != "speech-commands-mini":
+            raise SystemExit(f"Unsupported --source {args.source!r}; only 'speech-commands-mini' is available")
+        fetch_negatives(project, count=args.count, seed=args.seed)
     elif args.command == "generate-noise":
         from .noise import generate_noise
         generated = generate_noise(project, count=args.count, seed=args.seed)
