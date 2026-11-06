@@ -78,7 +78,7 @@ def _append_metadata(path: Path, rows: list[dict]) -> None:
                 writer.writerow({key: row.get(key, "") for key in fields})
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, path)
+        shutil.move(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -143,7 +143,7 @@ async def synthesize(project, phrase, variants_per_locale=24, seed=42):
             phrase_start, phrase_end = _speech_interval(generated_audio, generated_rate)
             # Atomic publish: an interrupted conversion cannot leave an untracked positive WAV
             # that a later dataset scan might incorrectly assign to validation or test.
-            os.replace(wav_tmp, wav)
+            shutil.move(wav_tmp, wav)
             try:
                 _append_metadata(metadata_path, [{
                     "path": wav.name, "speaker_id": speaker, "split": "train", "locale": locale,
