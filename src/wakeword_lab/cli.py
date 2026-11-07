@@ -44,7 +44,7 @@ def main():
     sweep = sub.add_parser("sweep"); sweep.add_argument("project"); sweep.add_argument("--widths", default="8,12,16,24"); sweep.add_argument("--dropouts", default="0.1,0.15,0.2"); sweep.add_argument("--config")
     stream = sub.add_parser("evaluate-stream"); stream.add_argument("project"); stream.add_argument("recordings_dir"); stream.add_argument("--run-name", default="default"); stream.add_argument("--annotations"); stream.add_argument("--vad-rms", type=float, default=0.008); stream.add_argument("--cooldown-ms", type=int, default=1500); stream.add_argument("--merge-gap", type=float, default=1.0); stream.add_argument("--threshold", type=float)
     package = sub.add_parser("package-android"); package.add_argument("project"); package.add_argument("--run-name", default="default"); package.add_argument("--destination")
-    report = sub.add_parser("report"); report.add_argument("project")
+    report = sub.add_parser("report"); report.add_argument("project"); report.add_argument("--run-name")
     compare = sub.add_parser("compare"); compare.add_argument("project")
 
     args = parser.parse_args()
@@ -118,8 +118,16 @@ def main():
         shutil.copy2(art / "model_metadata.json", dest / "model_metadata.json")
         print(f"Packaged model + metadata in {dest}")
     elif args.command == "report":
-        for file in sorted((project / "artifacts/experiments").glob("*/summary.json")):
-            print(f"## {file.parent.name}\n{file.read_text(encoding='utf-8')}")
+        from .reporting import generate_report
+        if args.run_name:
+            print(f"Report written to {generate_report(project, args.run_name)}")
+        else:
+            for file in sorted((project / "artifacts/experiments").glob("*/summary.json")):
+                print(f"## {file.parent.name}\n{file.read_text(encoding='utf-8')}")
+                try:
+                    generate_report(project, file.parent.name)
+                except Exception as exc:
+                    print(f"warning: report refresh failed for {file.parent.name}: {exc}")
     elif args.command == "compare":
         import csv
         path = project / "artifacts/sweep_results.csv"

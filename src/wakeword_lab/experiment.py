@@ -8,6 +8,7 @@ from .dataset import prepare
 from .train import train
 from .export import export
 from .evaluation import evaluate_test
+from .reporting import generate_report
 
 
 def run_experiment(project, run_name="default", config_path=None, **overrides):
@@ -20,6 +21,10 @@ def run_experiment(project, run_name="default", config_path=None, **overrides):
     (project / "artifacts/experiments" / run_name / "summary.json").write_text(
         json.dumps(metrics, indent=2), encoding="utf-8"
     )
+    try:
+        generate_report(project, run_name)
+    except Exception as exc:  # a failed report must never fail the experiment itself
+        print(f"warning: report generation failed for run {run_name!r}: {exc}")
     return metrics
 
 

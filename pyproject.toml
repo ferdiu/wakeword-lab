@@ -20,6 +20,7 @@ train = [
   "tensorflow>=2.16",
   "librosa>=0.10",
   "soundfile>=0.12",
+  "matplotlib>=3.8",
 ]
 tts = ["edge-tts>=6.1", "soundfile>=0.12"]
 record = ["sounddevice>=0.4", "soundfile>=0.12"]

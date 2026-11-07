@@ -168,7 +168,17 @@ Sweeps rank candidates using **validation** metrics and model size only; they do
 
 Edit `wakeword.yaml` to change augmentation, split fractions, frontend contract, model training, calibration count and target validation FPR. The Android frontend contract is deliberately fixed at 16 kHz / 1 s / 98 × 40; configuration validation rejects incompatible frontend settings. If you change split or augmentation settings, rerun `prepare` before training.
 
-Each run folder includes the training CSV, best and final Keras model, normalization metadata, run config, float32 and INT8 `.tflite` files, model metadata, validation metrics, test metrics and summary. INT8 calibration samples are class-balanced (100 positive + 100 negative by default), drawn only from training features. The validation threshold is selected to meet the configured empirical window FPR, not hard-coded to 0.80. When validation has too few negatives to resolve the requested FPR, export warns; it does not pretend that the target has been proven.
+Each run folder includes the training CSV, best and final Keras model, normalization metadata, run config, float32 and INT8 `.tflite` files, model metadata, validation metrics, test metrics and summary.
+
+Every experiment also generates a `report/` subdirectory (and `wakeword-lab report <project> --run-name X` refreshes one on demand; plain `report` prints summaries and refreshes all runs that have one). The report contains four plots and a markdown summary:
+
+- `training_curves.png` — train vs validation loss and metrics per epoch, with the early-stopping end marked
+- `score_distributions.png` — overlaid positive/negative INT8 score histograms for validation and test, with the calibrated threshold
+- `roc_pr.png` — validation ROC (FPR vs recall) and precision/recall vs threshold, with the calibrated threshold point marked
+- `quantization_drift.png` — paired float32 vs INT8 scores on validation with MAE/max-abs-error annotations
+- `report.md` — run config, seed, data-manifest hash, epochs completed, model size, quantization MAE and per-split metrics at the calibrated threshold
+
+Plotting needs matplotlib, which ships with the `train` extra; a failed report never fails the experiment itself. INT8 calibration samples are class-balanced (100 positive + 100 negative by default), drawn only from training features. The validation threshold is selected to meet the configured empirical window FPR, not hard-coded to 0.80. When validation has too few negatives to resolve the requested FPR, export warns; it does not pretend that the target has been proven.
 
 ## 4. Evaluate continuous audio (important)
 

@@ -27,3 +27,4 @@ gradle -p android :wakeword-sdk:testDebugUnitTest :wakeword-sdk:assembleRelease 
 - Noise-split integrity contract: noise mixed into a partition is drawn only from that same partition's own noise groups (routed by metadata split pins, e.g. fetch-noise's round-robin); noise never crosses train/validation/test boundaries. Train augmentation backgrounds come from the training partition only.
 - `wakeword-lab record` (mic capture) needs the `record` extra: `pip install -e '.[record]'` (sounddevice + soundfile).
 - Model deployment: `wakeword-lab package-android ./project --run-name X` copies `wakeword_int8.tflite` + `model_metadata.json` into the demo app assets; metadata quantization params must exactly match the exported model.
+- Every experiment auto-generates `artifacts/experiments/<run>/report/` (PNGs + `report.md`, matplotlib in the `train` extra); report failure warns but never fails the run.
