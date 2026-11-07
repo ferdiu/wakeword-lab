@@ -3,7 +3,7 @@
     <application
         android:allowBackup="false"
         android:label="Wake-word Recorder"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
             android:name="dev.wakeword.recorder.MainActivity"
             android:exported="true"

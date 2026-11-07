@@ -4,7 +4,7 @@
     <application
         android:allowBackup="false"
         android:label="Wakeword Lab Demo"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@android:style/Theme.Material.NoActionBar">
         <activity android:name="dev.wakeword.demo.MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
