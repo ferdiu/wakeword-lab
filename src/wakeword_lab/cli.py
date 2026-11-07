@@ -34,6 +34,8 @@ def main():
     synth = sub.add_parser("synthesize"); synth.add_argument("project"); synth.add_argument("--phrase", required=True); synth.add_argument("--variants-per-locale", type=int, default=24); synth.add_argument("--seed", type=int, default=42); synth.add_argument("--locales", help="comma-separated locale override (e.g. it-IT); default is the built-in en-IN/en-US/en-GB/en-AU weighted pools")
     synth_neg = sub.add_parser("synthesize-negatives"); synth_neg.add_argument("project"); synth_neg.add_argument("--phrase", action="append"); synth_neg.add_argument("--phrases-file"); synth_neg.add_argument("--variants-per-locale", type=int, default=24); synth_neg.add_argument("--seed", type=int, default=42)
     record = sub.add_parser("record"); record.add_argument("project"); record.add_argument("--kind", choices=["positive", "negative", "noise"], default="positive"); record.add_argument("--speaker"); record.add_argument("--split", choices=["train", "validation", "test"]); record.add_argument("--sample-rate", type=int, default=16000); record.add_argument("--count", type=int)
+    build_rec = sub.add_parser("build-recorder"); build_rec.add_argument("project"); build_rec.add_argument("--install", action="store_true")
+    fetch_rec = sub.add_parser("fetch-recordings"); fetch_rec.add_argument("project"); fetch_rec.add_argument("--speaker", default="phone"); fetch_rec.add_argument("--delete", action="store_true")
     fetch = sub.add_parser("fetch-negatives"); fetch.add_argument("project"); fetch.add_argument("--count", type=int, default=200); fetch.add_argument("--seed", type=int, default=42); fetch.add_argument("--source", default="speech-commands-mini")
     fetch_ns = sub.add_parser("fetch-noise"); fetch_ns.add_argument("project"); fetch_ns.add_argument("--environments", default="DKITCHEN,OOFFICE,STRAFFIC"); fetch_ns.add_argument("--seed", type=int, default=42)
     noise = sub.add_parser("generate-noise"); noise.add_argument("project"); noise.add_argument("--count", type=int, default=400); noise.add_argument("--seed", type=int, default=42)
@@ -76,6 +78,12 @@ def main():
         speaker = args.speaker or os.environ.get("USER") or "unknown"
         run_recording_session(project, kind=args.kind, speaker=speaker, split=args.split,
                               sample_rate=args.sample_rate, count=args.count)
+    elif args.command == "build-recorder":
+        from .recorder import build_recorder
+        print(build_recorder(project, install=args.install))
+    elif args.command == "fetch-recordings":
+        from .recorder import fetch_recordings
+        print(json.dumps(fetch_recordings(project, speaker=args.speaker, delete=args.delete), indent=2))
     elif args.command == "fetch-negatives":
         from .fetch_negatives import fetch_negatives
         if args.source != "speech-commands-mini":

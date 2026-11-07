@@ -6,4 +6,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "WakewordLab"
-include(":wakeword-sdk", ":demo")
+include(":wakeword-sdk", ":demo", ":recorder")

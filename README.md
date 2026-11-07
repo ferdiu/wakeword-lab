@@ -83,6 +83,17 @@ wakeword-lab record ./my-wake-word --kind positive --speaker alice --count 20
 
 Each take is saved as a 16 kHz mono pcm16 WAV named `<speaker>__rec_<runid>_<index>.wav` and tracked in `metadata.csv` (one session group per run). Takes are capped at 10 seconds; takes shorter than 0.3 s are rejected and can be redone without consuming the count. `--kind` also accepts `negative` and `noise`. Use `--split train|validation|test` to pin the whole session group to one partition; leave it blank to let the automatic group splitting assign it. When `--count` is omitted you are prompted (default 20).
 
+### Recording with the phone app
+
+For training data captured in real on-device conditions (the same microphone and audio path as the detector), build the standalone recorder app and capture takes straight on the phone:
+
+```bash
+wakeword-lab build-recorder ./my-wake-word          # add --install with a device attached
+wakeword-lab fetch-recordings ./my-wake-word --speaker alice --delete
+```
+
+`build-recorder` compiles `android/recorder/` with the project wake word baked into the UI and prints the APK path; `--install` also installs it on the attached device. The app shows six push-to-talk buttons (positive/negative × train/validation/test): hold a button to record (min 0.3 s, max 10 s), release to save, slide off to cancel. `fetch-recordings` pulls the recorded WAVs over adb into `data/raw/<kind>/` and pins each take's split from its on-device folder, grouped per pull as `<speaker>_phone_<batch>`; `--delete` removes the on-device copies after a successful pull. Because these takes come from a real phone microphone, they match on-device deployment conditions better than studio recordings.
+
 ### Synthetic hard negatives
 
 Generate non-wake speech utterances with the same Edge TTS voices as positive synthesis:
