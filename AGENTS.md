@@ -23,6 +23,7 @@ gradle -p android :wakeword-sdk:testDebugUnitTest :wakeword-sdk:assembleRelease 
 - **Timeouts**: long-running tests/commands must have explicit timeouts (CI uses `timeout` everywhere).
 - No physical-device CI: never state device latency/power numbers without an actual on-device benchmark.
 - `vox-wakeword/` is a local user project (data + config + artifacts), not library code — treat its contents as private data.
-- TTS synthesis (`wakeword-lab synthesize`) and `wakeword-lab fetch-negatives` are the only networked steps (Edge TTS + requires `ffmpeg`; mini_speech_commands download); everything else is local-only.
+- TTS synthesis (`wakeword-lab synthesize`/`synthesize-negatives`), `wakeword-lab fetch-negatives` (mini_speech_commands) and `wakeword-lab fetch-noise` (DEMAND ambience from Zenodo) are the only networked steps (Edge TTS requires `ffmpeg`); everything else is local-only.
+- Noise-split integrity contract: noise mixed into a partition is drawn only from that same partition's own noise groups (routed by metadata split pins, e.g. fetch-noise's round-robin); noise never crosses train/validation/test boundaries. Train augmentation backgrounds come from the training partition only.
 - `wakeword-lab record` (mic capture) needs the `record` extra: `pip install -e '.[record]'` (sounddevice + soundfile).
 - Model deployment: `wakeword-lab package-android ./project --run-name X` copies `wakeword_int8.tflite` + `model_metadata.json` into the demo app assets; metadata quantization params must exactly match the exported model.

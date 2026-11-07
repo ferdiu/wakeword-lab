@@ -103,13 +103,36 @@ Fetch one-second command-word clips from TensorFlow's mini_speech_commands archi
 wakeword-lab fetch-negatives ./my-wake-word --count 200 --seed 42
 ```
 
-This downloads the ~174 MB archive (single network step besides TTS, with a 300 s timeout), selects clips uniformly across the eight command-word folders and copies them into `negative/` as `sc_<word>__<original>.wav`. The filename-prefix grouping then keeps every command word inside one split partition. No metadata rows are added for these clips; the download is cached nowhere — rerun with the same seed for a reproducible selection.
+This downloads the ~174 MB archive (one of the network steps besides TTS and `fetch-noise`, with a 300 s timeout), selects clips uniformly across the eight command-word folders and copies them into `negative/` as `sc_<word>__<original>.wav`. The filename-prefix grouping then keeps every command word inside one split partition. No metadata rows are added for these clips; the download is cached nowhere — rerun with the same seed for a reproducible selection.
+
+### Real-world noise (DEMAND)
+
+Fetch genuine ambience from the DEMAND database (Zenodo record 1227121) into `noise/`:
+
+```bash
+wakeword-lab fetch-noise ./my-wake-word
+# optional: --environments DKITCHEN,OOFFICE,STRAFFIC
+```
+
+Each 16 kHz mono environment archive (~5 minutes of continuous room noise, 200–300 MB) is SHA-256 verified and its WAVs are extracted as `demand_<env>__<original>.wav`. Every environment gets a metadata row with its own `speaker_id`/`group_id` and a split pin assigned round-robin (`train`, `validation`, `test`, …) so each split owns at least one noise group; edit the `split` column in `metadata.csv` to reroute an environment. Environments without a pinned hash fail closed.
+
+With the `noise_mixing` section of `wakeword.yaml` enabled, every windowed clip in **every** split (train, validation and test) keeps its original plus `copies_per_clip` extra copies mixed with noise drawn only from that same split's own noise groups, at a random SNR in `[snr_min_db, snr_max_db]`:
+
+```yaml
+noise_mixing:
+  enabled: false
+  copies_per_clip: 1
+  snr_min_db: 0.0
+  snr_max_db: 20.0
+```
+
+This is disabled by default; when enabled, a partition without any noise group is skipped with a warning. Speech-domain augmentation (speed/pitch/shift/reverb) stays train-only; noise mixing is the only validation/test augmentation and never mixes noise across split boundaries.
 
 ```bash
 wakeword-lab prepare ./my-wake-word
 ```
 
-The command first splits source groups and then windows/features each partition. It produces `data/processed/{train,validation,test}.npz` and `split_manifest.json`. Validation/test examples are not augmented. Positive recordings are cropped so the complete wake phrase fits the one-second context (using phrase timestamps where supplied); negative recordings are sampled at the configured hop, with a per-recording cap to keep preparation bounded. The augmentation count and window cap are configurable in `wakeword.yaml`.
+The command first splits source groups and then windows/features each partition. It produces `data/processed/{train,validation,test}.npz` and `split_manifest.json`. Positive recordings are cropped so the complete wake phrase fits the one-second context (using phrase timestamps where supplied); negative recordings are sampled at the configured hop, with a per-recording cap to keep preparation bounded. The augmentation count and window cap are configurable in `wakeword.yaml`. Speech-domain augmentation (speed/pitch/shift/reverb) applies to the training partition only; when `noise_mixing` is enabled, validation and test windows additionally receive noise-mixed copies built exclusively from their own split's pinned noise groups.
 
 **Data quality requirement:** each of train, validation and test must contain positive and negative examples. If not, the command fails rather than generating a misleading model. Add more independent groups or explicitly pin suitable recordings. For robust speaker-generalization estimates, aim for many speakers in all three splits; three groups is only the mechanical minimum, not a statistically good dataset.
 

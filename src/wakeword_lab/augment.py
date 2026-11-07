@@ -100,3 +100,23 @@ def augment_audio(
             x = x + noise
 
     return np.clip(x, -1.0, 1.0).astype(np.float32)
+
+
+def mix_with_noise(window: np.ndarray, noise: np.ndarray, snr_db: float) -> np.ndarray:
+    """Mix a one-second window with a noise snippet at a target SNR in dB.
+
+    The noise is scaled so its RMS sits ``snr_db`` below the window RMS. Shorter
+    noise snippets are zero-padded to the window length. Two degenerate cases are
+    guarded instead of amplified: a zero-RMS window (silence) has no reference
+    level and is returned unchanged, and a zero-RMS noise snippet contributes
+    nothing. The mix is clipped to the PCM range like augment_audio output.
+    """
+    window = np.asarray(window, dtype=np.float32)
+    noise = fit_window(np.asarray(noise, dtype=np.float32), len(window))
+    signal_rms = float(np.sqrt(np.mean(window * window) + 1e-12))
+    noise_rms = float(np.sqrt(np.mean(noise * noise) + 1e-12))
+    if signal_rms <= 1e-6 or noise_rms <= 1e-6:
+        return window.copy()
+    target_noise_rms = signal_rms / (10.0 ** (float(snr_db) / 20.0))
+    mixed = window + noise * (target_noise_rms / noise_rms)
+    return np.clip(mixed, -1.0, 1.0).astype(np.float32)

@@ -4,11 +4,12 @@ from pathlib import Path
 import csv
 import json
 import math
+import warnings
 import numpy as np
 from scipy.io import wavfile
 
 from .audio import mono_resample, fit_window
-from .augment import augment_audio
+from .augment import augment_audio, mix_with_noise
 from .config import load_config
 from .frontend import log_mel
 from .split import group_split
@@ -182,6 +183,11 @@ def prepare(project: str | Path, seed: int | None = None, config_path: str | Pat
     do_augment = bool(config["augmentation"]["enabled"] if augment is None else augment)
     aug_cfg = config["augmentation"]
     ds_cfg = config["dataset"]
+    mix_cfg = config["noise_mixing"]
+    do_noise_mix = bool(mix_cfg["enabled"])
+    copies_per_clip = int(mix_cfg["copies_per_clip"])
+    mix_snr_min = float(mix_cfg["snr_min_db"])
+    mix_snr_max = float(mix_cfg["snr_max_db"])
     out = project / "data/processed"
     out.mkdir(parents=True, exist_ok=True)
     summary = {}
@@ -192,6 +198,45 @@ def prepare(project: str | Path, seed: int | None = None, config_path: str | Pat
         positives = [r for r in items if r["kind"] == "positive"]
         negatives = [r for r in items if r["kind"] == "negative"]
         noise = noise_snippets if split_name == "train" else []
+        # Noise-mixing sources for this partition only. Split integrity contract:
+        # a window may only ever be mixed with noise from a noise group that
+        # belongs to the SAME partition (fetch-noise split pins route them).
+        noise_rows = [r for r in items if r["kind"] == "noise"]
+        noise_cache: dict[str, np.ndarray | None] = {}
+        mixed_count = 0
+        if do_noise_mix and not noise_rows:
+            warnings.warn(
+                f"noise_mixing enabled but split {split_name!r} has no noise groups; "
+                "skipping mixing for this partition")
+
+        def _partition_noise_snippet() -> np.ndarray | None:
+            if not noise_rows:
+                return None
+            row = noise_rows[int(rng.integers(0, len(noise_rows)))]
+            if row["path"] not in noise_cache:
+                ambient = read_wav(row["path"])
+                noise_cache[row["path"]] = ambient if len(ambient) else None
+            ambient = noise_cache[row["path"]]
+            if ambient is None:
+                return None
+            if len(ambient) >= 16000:
+                start = int(rng.integers(0, len(ambient) - 16000 + 1))
+                return ambient[start:start + 16000]
+            return fit_window(ambient, 16000)
+
+        def _append_mixed_copies(clip: np.ndarray, label: int) -> None:
+            nonlocal mixed_count
+            if not do_noise_mix:
+                return
+            for _ in range(copies_per_clip):
+                snippet = _partition_noise_snippet()
+                if snippet is None:
+                    continue
+                snr = float(rng.uniform(mix_snr_min, mix_snr_max))
+                xs.append(_features(mix_with_noise(clip, snippet, snr)))
+                ys.append(label)
+                mixed_count += 1
+
         if split_name == "train" and ds_cfg.get("noise_as_negative_train", True):
             # Background-only recordings are both hard negative examples and
             # augmentation sources, but are never copied into validation/test.
@@ -220,6 +265,7 @@ def prepare(project: str | Path, seed: int | None = None, config_path: str | Pat
                             snr_min_db=float(aug_cfg["snr_min_db"]), snr_max_db=float(aug_cfg["snr_max_db"]),
                         )
                         xs.append(_features(generated)); ys.append(1)
+                _append_mixed_copies(clip, 1)
 
         negative_hop = round(16000 * float(ds_cfg["negative_hop_ms"]) / 1000)
         for row in negatives:
@@ -235,18 +281,23 @@ def prepare(project: str | Path, seed: int | None = None, config_path: str | Pat
             for start in starts:
                 clip = fit_window(audio[int(start):int(start) + 16000], 16000)
                 xs.append(_features(clip)); ys.append(0)
+                _append_mixed_copies(clip, 0)
             del audio
 
         if not xs or len(set(ys)) < 2:
             raise ValueError(f"Split {split_name!r} has no examples of one class; add independent groups or adjust split pins")
         np.savez_compressed(out / f"{split_name}.npz", x=np.asarray(xs, np.float32), y=np.asarray(ys, np.int64))
-        summary[split_name] = {"examples": len(ys), "positive": int(sum(ys)), "negative": int(len(ys)-sum(ys))}
+        summary[split_name] = {
+            "examples": len(ys), "positive": int(sum(ys)), "negative": int(len(ys) - sum(ys)),
+            "noise_mixed": mixed_count,
+        }
 
     manifest = {
         "seed": seed,
         "splits": {name: [{"path": row["path"], "source_group": row["source_group"], "kind": row["kind"], "split": name} for row in items] for name, items in splits.items()},
         "summary": summary,
         "augmentation": {"enabled": do_augment, "train_only": True},
+        "noise_mixing": {"enabled": do_noise_mix},
     }
     (out / "split_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return manifest

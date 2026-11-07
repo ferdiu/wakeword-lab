@@ -29,6 +29,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "snr_max_db": 25.0,
     },
     "dataset": {"negative_hop_ms": 500, "max_windows_per_recording": 80, "noise_as_negative_train": True},
+    # Per-split noise mixing: windowed clips from EVERY partition get extra
+    # copies mixed with noise from that same partition's own noise groups.
+    "noise_mixing": {
+        "enabled": False,
+        "copies_per_clip": 1,
+        "snr_min_db": 0.0,
+        "snr_max_db": 20.0,
+    },
     "model": {
         "width": 24,
         "dropout": 0.15,
@@ -100,6 +108,14 @@ def validate_config(c: dict) -> None:
         raise ValueError("dataset.noise_as_negative_train must be a YAML boolean")
     if int(dataset["negative_hop_ms"]) < 1 or int(dataset["max_windows_per_recording"]) < 1:
         raise ValueError("Dataset hop and max_windows_per_recording must be positive")
+    mixing = c["noise_mixing"]
+    if not isinstance(mixing["enabled"], bool):
+        raise ValueError("noise_mixing.enabled must be a YAML boolean")
+    if int(mixing["copies_per_clip"]) < 0:
+        raise ValueError("noise_mixing.copies_per_clip cannot be negative")
+    mix_snr_min, mix_snr_max = float(mixing["snr_min_db"]), float(mixing["snr_max_db"])
+    if not (math.isfinite(mix_snr_min) and math.isfinite(mix_snr_max)) or mix_snr_min > mix_snr_max:
+        raise ValueError("noise_mixing SNR bounds must be finite and snr_min_db cannot exceed snr_max_db")
     model = c["model"]
     if int(model["width"]) < 4 or int(model["epochs"]) < 1 or int(model["batch_size"]) < 1:
         raise ValueError("Invalid model training configuration")

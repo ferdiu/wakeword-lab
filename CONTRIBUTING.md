@@ -20,7 +20,7 @@ gradle -p android :wakeword-sdk:testDebugUnitTest :demo:assembleDebug --no-daemo
 
 - Do not commit recordings, generated speech, model files, processed datasets, private metadata or speaker-identifying information.
 - Split by stable source/speaker groups before extracting windows or augmenting.
-- Augmentation backgrounds must come from the training partition only.
+- Speech augmentation backgrounds must come from the training partition only; per-split noise mixing (`noise_mixing`) draws each split's backgrounds exclusively from that same split's own pinned noise groups — never across partitions.
 - Validation is for threshold/calibration decisions; test data is a one-time final check.
 - Use continuous audio from unseen rooms/devices and report false activations/hour; window accuracy alone is not sufficient.
 

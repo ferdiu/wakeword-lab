@@ -35,6 +35,7 @@ def main():
     synth_neg = sub.add_parser("synthesize-negatives"); synth_neg.add_argument("project"); synth_neg.add_argument("--phrase", action="append"); synth_neg.add_argument("--phrases-file"); synth_neg.add_argument("--variants-per-locale", type=int, default=24); synth_neg.add_argument("--seed", type=int, default=42)
     record = sub.add_parser("record"); record.add_argument("project"); record.add_argument("--kind", choices=["positive", "negative", "noise"], default="positive"); record.add_argument("--speaker"); record.add_argument("--split", choices=["train", "validation", "test"]); record.add_argument("--sample-rate", type=int, default=16000); record.add_argument("--count", type=int)
     fetch = sub.add_parser("fetch-negatives"); fetch.add_argument("project"); fetch.add_argument("--count", type=int, default=200); fetch.add_argument("--seed", type=int, default=42); fetch.add_argument("--source", default="speech-commands-mini")
+    fetch_ns = sub.add_parser("fetch-noise"); fetch_ns.add_argument("project"); fetch_ns.add_argument("--environments", default="DKITCHEN,OOFFICE,STRAFFIC"); fetch_ns.add_argument("--seed", type=int, default=42)
     noise = sub.add_parser("generate-noise"); noise.add_argument("project"); noise.add_argument("--count", type=int, default=400); noise.add_argument("--seed", type=int, default=42)
     train = sub.add_parser("train"); train.add_argument("project"); train.add_argument("--run-name", default="default"); train.add_argument("--config"); train.add_argument("--epochs", type=int); train.add_argument("--batch-size", type=int); train.add_argument("--width", type=int); train.add_argument("--dropout", type=float)
     export = sub.add_parser("export"); export.add_argument("project"); export.add_argument("--run-name", default="default"); export.add_argument("--config")
@@ -80,6 +81,10 @@ def main():
         if args.source != "speech-commands-mini":
             raise SystemExit(f"Unsupported --source {args.source!r}; only 'speech-commands-mini' is available")
         fetch_negatives(project, count=args.count, seed=args.seed)
+    elif args.command == "fetch-noise":
+        from .fetch_noise import fetch_noise
+        environments = [x.strip() for x in args.environments.split(",") if x.strip()]
+        fetch_noise(project, environments=environments, seed=args.seed)
     elif args.command == "generate-noise":
         from .noise import generate_noise
         generated = generate_noise(project, count=args.count, seed=args.seed)

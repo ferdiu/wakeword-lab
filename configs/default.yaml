@@ -26,6 +26,11 @@ dataset:
   negative_hop_ms: 500
   max_windows_per_recording: 80
   noise_as_negative_train: true
+noise_mixing:
+  enabled: false
+  copies_per_clip: 1
+  snr_min_db: 0.0
+  snr_max_db: 20.0
 model:
   width: 24
   dropout: 0.15
