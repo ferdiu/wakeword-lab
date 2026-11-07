@@ -84,6 +84,7 @@ class MainActivity : Activity() {
 
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             addView(header, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(status, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(grid, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
