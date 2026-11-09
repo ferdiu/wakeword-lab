@@ -177,18 +177,6 @@ def _convert_flac_to_wav(flac_path: Path, wav_path: Path) -> None:
     ], check=True, timeout=FFMPEG_TIMEOUT_S)
 
 
-def _extract_tar_member(archive: tarfile.TarFile, info: tarfile.TarInfo, temp_dir: Path) -> Path:
-    # Only ever extract the already-selected members — never extractall.
-    # filter="data" is Python 3.12+ safe extraction (rejects absolute/..
-    # destinations, device files, weird modes); the explicit _check_member_safe
-    # guard above runs first and stands in on older interpreters.
-    try:
-        archive.extract(info, temp_dir, filter="data")
-    except TypeError:  # Python < 3.12 has no filter kwarg
-        archive.extract(info, temp_dir)
-    return temp_dir / info.name
-
-
 def fetch_negatives(project, count: int | None = None, seed: int = 42,
                     source: str = DEFAULT_SOURCE, url: str | None = None,
                     downloader=None) -> list[Path]:
@@ -309,29 +297,45 @@ def _publish_zip_selection(archive_path: Path, selected: list[tuple[str, str]],
 def _publish_tar_selection(archive_path: Path, selected: list[tuple[str, str]],
                            spec: SourceSpec, out_dir: Path,
                            extract_dir: Path) -> tuple[list[Path], dict[str, int]]:
+    """Publish selected members in ONE streaming pass.
+
+    tar.gz has no seekable index: random-access mode (r:*) re-decompresses the
+    whole archive from the start for every extract() call, which turns 1000
+    selections in a 2.4 GB archive into an hour of CPU. Streaming mode (r|*)
+    decompresses once, in member order.
+    """
     paths: list[Path] = []
     per_group: dict[str, int] = {}
+    wanted = {member_name: group for group, member_name in selected}
     extract_dir.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(archive_path, mode="r:*") as archive:
-        by_name = {info.name: info for info in archive.getmembers()}
-        for group, member_name in selected:
-            extracted = _extract_tar_member(archive, by_name[member_name], extract_dir)
-            target = out_dir / _target_name(spec, group, member_name)
-            # ffmpeg infers the output muxer from the extension, so the
-            # conversion temp file must end in .wav (as in synthesize).
-            temporary = (target.with_suffix(".tmp.wav") if spec.convert_to_wav
-                         else target.with_name(target.name + ".tmp"))
-            try:
-                if spec.convert_to_wav:
-                    _convert_flac_to_wav(extracted, temporary)
-                else:
-                    shutil.copyfile(extracted, temporary)
-                os.replace(temporary, target)
-            except Exception:
-                temporary.unlink(missing_ok=True)
-                raise
-            finally:
-                extracted.unlink(missing_ok=True)
+    with tarfile.open(archive_path, mode="r|*") as archive:
+        for info in archive:
+            if not info.isfile() or info.name not in wanted:
+                continue
+            _check_member_safe(info.name)
+            group = wanted.pop(info.name)
+            target = out_dir / _target_name(spec, group, info.name)
+            if spec.convert_to_wav:
+                # ffmpeg needs a real input file; stage the FLAC in temp first.
+                staged = extract_dir / f"{target.stem}.flac"
+                with archive.extractfile(info) as source, staged.open("wb") as sink:
+                    shutil.copyfileobj(source, sink)
+                # ffmpeg infers the output muxer from the extension, so the
+                # conversion temp file must end in .wav (as in synthesize).
+                temporary = target.with_suffix(".tmp.wav")
+                try:
+                    _convert_flac_to_wav(staged, temporary)
+                    os.replace(temporary, target)
+                except Exception:
+                    temporary.unlink(missing_ok=True)
+                    raise
+                finally:
+                    staged.unlink(missing_ok=True)
+            else:
+                _publish(archive.extractfile(info), target)
             per_group[group] = per_group.get(group, 0) + 1
             paths.append(target)
+    if wanted:
+        raise RuntimeError(
+            f"{len(wanted)} selected members were not found in the archive")
     return paths, per_group

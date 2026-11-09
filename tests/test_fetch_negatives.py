@@ -168,6 +168,22 @@ def test_fetch_full_selects_balanced_clips_and_skips_background_noise(tmp_path, 
     assert "up: 2" in summary and "down: 2" in summary and "left: 2" in summary
 
 
+def test_fetch_full_never_uses_random_access_extract(tmp_path, monkeypatch):
+    """tar.gz random access re-decompresses the archive per member; the
+    publish path must stay streaming-only (regression guard)."""
+    def _banned_extract(self, *args, **kwargs):
+        raise AssertionError("random-access extract() called on tar archive")
+
+    monkeypatch.setattr(tarfile.TarFile, "extract", _banned_extract)
+    monkeypatch.setattr(tarfile.TarFile, "extractall", _banned_extract)
+    project = _project(tmp_path)
+    payload = _full_archive(words=("up", "down"), per_word=2)
+    paths = fetch_negatives.fetch_negatives(
+        project, count=3, seed=1, source="speech-commands-full",
+        downloader=_fake_downloader(payload))
+    assert len(paths) == 3
+
+
 def test_fetch_full_rejects_path_traversal_members(tmp_path):
     project = _project(tmp_path)
     payload = _tar_gz_bytes([
