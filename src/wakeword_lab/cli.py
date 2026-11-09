@@ -36,7 +36,7 @@ def main():
     record = sub.add_parser("record"); record.add_argument("project"); record.add_argument("--kind", choices=["positive", "negative", "noise"], default="positive"); record.add_argument("--speaker"); record.add_argument("--split", choices=["train", "validation", "test"]); record.add_argument("--sample-rate", type=int, default=16000); record.add_argument("--count", type=int)
     build_rec = sub.add_parser("build-recorder"); build_rec.add_argument("project"); build_rec.add_argument("--install", action="store_true")
     fetch_rec = sub.add_parser("fetch-recordings"); fetch_rec.add_argument("project"); fetch_rec.add_argument("--speaker", default="phone"); fetch_rec.add_argument("--delete", action="store_true")
-    fetch = sub.add_parser("fetch-negatives"); fetch.add_argument("project"); fetch.add_argument("--count", type=int, default=200); fetch.add_argument("--seed", type=int, default=42); fetch.add_argument("--source", default="speech-commands-mini")
+    fetch = sub.add_parser("fetch-negatives"); fetch.add_argument("project"); fetch.add_argument("--count", type=int, default=None); fetch.add_argument("--seed", type=int, default=42); fetch.add_argument("--source", choices=["speech-commands-mini", "speech-commands-full", "librispeech"], default="speech-commands-mini")
     fetch_ns = sub.add_parser("fetch-noise"); fetch_ns.add_argument("project"); fetch_ns.add_argument("--environments", default="DKITCHEN,OOFFICE,STRAFFIC"); fetch_ns.add_argument("--seed", type=int, default=42)
     noise = sub.add_parser("generate-noise"); noise.add_argument("project"); noise.add_argument("--count", type=int, default=400); noise.add_argument("--seed", type=int, default=42)
     train = sub.add_parser("train"); train.add_argument("project"); train.add_argument("--run-name", default="default"); train.add_argument("--config"); train.add_argument("--epochs", type=int); train.add_argument("--batch-size", type=int); train.add_argument("--width", type=int); train.add_argument("--dropout", type=float)
@@ -86,9 +86,8 @@ def main():
         print(json.dumps(fetch_recordings(project, speaker=args.speaker, delete=args.delete), indent=2))
     elif args.command == "fetch-negatives":
         from .fetch_negatives import fetch_negatives
-        if args.source != "speech-commands-mini":
-            raise SystemExit(f"Unsupported --source {args.source!r}; only 'speech-commands-mini' is available")
-        fetch_negatives(project, count=args.count, seed=args.seed)
+
+        fetch_negatives(project, count=args.count, seed=args.seed, source=args.source)
     elif args.command == "fetch-noise":
         from .fetch_noise import fetch_noise
         environments = [x.strip() for x in args.environments.split(",") if x.strip()]

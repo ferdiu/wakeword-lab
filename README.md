@@ -108,13 +108,20 @@ Each phrase yields `variants_per_locale * 6` utterances and clips are written to
 
 ### Dataset hard negatives
 
-Fetch one-second command-word clips from TensorFlow's mini_speech_commands archive as hard negatives:
+Fetch speech clips from public command-word / speech archives as hard negatives:
 
 ```bash
 wakeword-lab fetch-negatives ./my-wake-word --count 200 --seed 42
+# optional: --source speech-commands-full|librispeech
 ```
 
-This downloads the ~174 MB archive (one of the network steps besides TTS and `fetch-noise`, with a 300 s timeout), selects clips uniformly across the eight command-word folders and copies them into `negative/` as `sc_<word>__<original>.wav`. The filename-prefix grouping then keeps every command word inside one split partition. No metadata rows are added for these clips; the download is cached nowhere — rerun with the same seed for a reproducible selection.
+| `--source` | Archive | Size | Content | Default count |
+|---|---|---|---|---|
+| `speech-commands-mini` (default) | TensorFlow mini_speech_commands zip | ~174 MB | one-second 16 kHz command-word clips, 8 words | 200 |
+| `speech-commands-full` | TensorFlow speech_commands_v0.02 tar.gz | ~2.3 GB | one-second 16 kHz command-word clips, ~35 words | 1000 |
+| `librispeech` | OpenSLR LibriSpeech test-clean tar.gz | ~350 MB | several-seconds 16 kHz read-speech clips, 40 speakers (requires `ffmpeg`) | 200 |
+
+The download is SHA-256 verified (fail closed), clips are selected uniformly round-robin across the word/speaker folders and copied into `negative/` as `sc_<word>__<original>.wav` (Speech Commands) or `ls_<speaker>__<original>.wav` (LibriSpeech). The filename-prefix grouping then keeps every word/speaker inside one split partition. The full Speech Commands archive's `_background_noise_` folder is skipped on purpose — DEMAND covers ambience. LibriSpeech FLACs are converted to 16 kHz mono WAV with `ffmpeg`. These downloads are network steps like TTS and `fetch-noise` (300 s timeout). No metadata rows are added for these clips; the download is cached nowhere — rerun with the same seed for a reproducible selection.
 
 ### Real-world noise (DEMAND)
 
