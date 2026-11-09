@@ -54,12 +54,13 @@ def test_fetch_recordings_moves_files_and_writes_metadata(tmp_path, capsys):
                                            f"alice__phone_{batch}_003.wav"]
     assert [p.name for p in negatives] == [f"alice__phone_{batch}_001.wav"]
     assert all(not p.name.endswith(".tmp") for p in positives + negatives)
-    # Split pinned from the on-device folder; group pinned per pull batch.
+    # Split pinned from the on-device folder; group pinned per pull batch AND
+    # split (a group must never straddle partitions).
     rows = _metadata_rows(project)
     assert [(r["path"], r["split"], r["group_id"]) for r in rows] == [
-        (negatives[0].name, "test", f"alice_phone_{batch}"),
-        (positives[0].name, "train", f"alice_phone_{batch}"),
-        (positives[1].name, "train", f"alice_phone_{batch}"),
+        (negatives[0].name, "test", f"alice_phone_{batch}_test"),
+        (positives[0].name, "train", f"alice_phone_{batch}_train"),
+        (positives[1].name, "train", f"alice_phone_{batch}_train"),
     ]
     assert all(r["speaker_id"] == "alice" and r["locale"] == "" for r in rows)
     assert "positive/train: 2" in capsys.readouterr().out

@@ -104,8 +104,9 @@ def fetch_recordings(project, speaker: str = "phone", delete: bool = False, adb_
     and must return a ``subprocess.CompletedProcess``. Each take is published
     as ``<safe_speaker>__phone_<batch>_<NNN>.wav`` (batch = pull timestamp,
     NNN = global index within this pull) and pinned in metadata.csv to the
-    split of its on-device folder, grouped per pull as
-    ``<speaker>_phone_<batch>``. Unknown kind/split folders are skipped with a
+    split of its on-device folder, grouped per pull and split as
+    ``<speaker>_phone_<batch>_<split>`` (one group must never straddle
+    partitions). Unknown kind/split folders are skipped with a
     warning. With ``delete`` the on-device tree is removed only after every
     file moved successfully. Returns ``{"fetched": n, "counts": {kind: {split: n}}}``.
     """
@@ -130,7 +131,6 @@ def fetch_recordings(project, speaker: str = "phone", delete: bool = False, adb_
                   f"— adb said: {(pull.stderr or pull.stdout or '').strip()}")
             return {"fetched": 0, "counts": {}}
         batch = datetime.now().strftime("%Y%m%d-%H%M%S")
-        group_id = f"{speaker}_phone_{batch}"
         safe_speaker = _safe_speaker(speaker)
         metadata_path = project / "data" / "raw" / "metadata.csv"
         tree = Path(temp_dir) / "recordings"
@@ -150,6 +150,9 @@ def fetch_recordings(project, speaker: str = "phone", delete: bool = False, adb_
                     print(f"warning: skipping unknown folder {split_dir.relative_to(tree)}")
                     continue
                 split = split_dir.name
+                # Split integrity: one group must never straddle partitions, so
+                # the pull-batch group is per split, not per pull.
+                group_id = f"{speaker}_phone_{batch}_{split}"
                 for wav in sorted(split_dir.glob("*.wav")):
                     moved += 1
                     target = out_dir / f"{safe_speaker}__phone_{batch}_{moved:03d}.wav"
