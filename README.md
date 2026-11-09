@@ -30,6 +30,21 @@ pip install -e '.[dev,train]'
 wakeword-lab init ./my-wake-word --wake-word 'Hey Nova'
 ```
 
+### CPU vs GPU training
+
+CPU is the default and works everywhere. On Linux with an NVIDIA GPU you can opt into CUDA training instead:
+
+```bash
+pip install -e '.[dev,train-gpu]'   # tensorflow[and-cuda]: pulls the CUDA/cuDNN pip libs (~2.5 GB)
+```
+
+TensorFlow then uses the GPU automatically when one is visible. To force CPU training on a machine with a GPU, hide the device for the run (per AGENTS.md, export rather than inline assignment):
+
+```bash
+export CUDA_VISIBLE_DEVICES=""
+wakeword-lab experiment ./my-wake-word --run-name cpu-run
+```
+
 Generate a reproducible starter set of 400 low-level synthetic background clips (colored noise plus fan/hum profiles) using only the core dependencies:
 
 ```bash

@@ -5,7 +5,7 @@ Wake-word training/quantization lab: Python pipeline (`src/wakeword_lab/`, CLI `
 ## Commands
 
 ```bash
-pip install -e '.[dev,train]'   # 'train' (TensorFlow/librosa) and 'tts' extras are separate; core deps are numpy/scipy/PyYAML only
+pip install -e '.[dev,train]'   # 'train' (TensorFlow/librosa) and 'tts' extras are separate; core deps are numpy/scipy/PyYAML only. CPU is the default; 'train-gpu' (tensorflow[and-cuda]) opts into NVIDIA/CUDA training — force CPU on a GPU machine with `export CUDA_VISIBLE_DEVICES=""`
 ruff check .
 timeout 90s pytest -q                                  # full unit suite must finish fast; CI enforces a 90 s timeout
 python -m pytest tests/test_tf_integration.py          # TF training/export smoke; needs [train], CI gives it 15m

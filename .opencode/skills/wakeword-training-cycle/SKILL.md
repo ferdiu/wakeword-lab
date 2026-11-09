@@ -33,6 +33,7 @@ Every run writes `artifacts/experiments/<name>/report/` (report.md + plots) and 
 
 ## Knobs
 
+- Hardware: CPU is the default; on NVIDIA/Linux `pip install -e '.[train-gpu]'` switches to CUDA (3–5× faster epochs). Force CPU with `export CUDA_VISIBLE_DEVICES=""`.
 - `--width` / `--dropout`: more dropout (0.2) helps when data is small. `wakeword-lab sweep <proj>` + `wakeword-lab compare <proj>` ranks configs by validation (never test).
 - `wakeword.yaml`: augmentation copies, noise_mixing SNR range/copies, quantization.target_validation_fpr.
 

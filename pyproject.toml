@@ -22,6 +22,14 @@ train = [
   "soundfile>=0.12",
   "matplotlib>=3.8",
 ]
+# GPU training (Linux, NVIDIA only): same stack plus the CUDA/cuDNN pip libs.
+# CPU stays the default; train-gpu is an opt-in superset of train.
+train-gpu = [
+  "tensorflow[and-cuda]>=2.16",
+  "librosa>=0.10",
+  "soundfile>=0.12",
+  "matplotlib>=3.8",
+]
 tts = ["edge-tts>=6.1", "soundfile>=0.12"]
 record = ["sounddevice>=0.4", "soundfile>=0.12"]
 dev = ["pytest>=8.0", "ruff>=0.5"]
