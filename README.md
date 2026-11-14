@@ -127,7 +127,7 @@ Fetch speech clips from public command-word / speech archives as hard negatives:
 
 ```bash
 wakeword-lab fetch-negatives ./my-wake-word --count 200 --seed 42
-# optional: --source speech-commands-full|librispeech
+# optional: --source speech-commands-full|librispeech|librispeech-train|musan-speech|musan-music|esc-50
 ```
 
 | `--source` | Archive | Size | Content | Default count |
@@ -135,8 +135,12 @@ wakeword-lab fetch-negatives ./my-wake-word --count 200 --seed 42
 | `speech-commands-mini` (default) | TensorFlow mini_speech_commands zip | ~174 MB | one-second 16 kHz command-word clips, 8 words | 200 |
 | `speech-commands-full` | TensorFlow speech_commands_v0.02 tar.gz | ~2.3 GB | one-second 16 kHz command-word clips, ~35 words | 1000 |
 | `librispeech` | OpenSLR LibriSpeech test-clean tar.gz | ~350 MB | several-seconds 16 kHz read-speech clips, 40 speakers (requires `ffmpeg`) | 200 |
+| `librispeech-train` | OpenSLR LibriSpeech train-clean-100 tar.gz | ~6.3 GB | read-speech clips, ~250 speakers (requires `ffmpeg`) | 500 |
+| `musan-speech` | OpenSLR MUSAN tar.gz | ~11 GB | speech clips (interviews, audiobooks, government speech) by collection, 16 kHz mono WAV | 400 |
+| `musan-music` | OpenSLR MUSAN tar.gz (same archive as `musan-speech`) | ~11 GB | long music clips (many minutes) by collection; `prepare` windows them | 300 |
+| `esc-50` | GitHub ESC-50 zip | ~616 MB | five-second environmental sound clips across 50 categories (requires `ffmpeg`) | 400 |
 
-The download is SHA-256 verified (fail closed), clips are selected uniformly round-robin across the word/speaker folders and copied into `negative/` as `sc_<word>__<original>.wav` (Speech Commands) or `ls_<speaker>__<original>.wav` (LibriSpeech). The filename-prefix grouping then keeps every word/speaker inside one split partition. The full Speech Commands archive's `_background_noise_` folder is skipped on purpose — DEMAND covers ambience. LibriSpeech FLACs are converted to 16 kHz mono WAV with `ffmpeg`. These downloads are network steps like TTS and `fetch-noise` (300 s timeout). No metadata rows are added for these clips; the download is cached nowhere — rerun with the same seed for a reproducible selection.
+The download is SHA-256 verified (fail closed), clips are selected uniformly round-robin across the word/speaker/collection/category groups and copied into `negative/` as `sc_<word>__<original>.wav` (Speech Commands), `ls_<speaker>__<original>.wav`/`lt_<speaker>__<original>.wav` (LibriSpeech), `ms_<collection>__<original>.wav`/`mm_<collection>__<original>.wav` (MUSAN) or `es_<category>__<original>.wav` (ESC-50). The filename-prefix grouping then keeps every group inside one split partition. The full Speech Commands archive's `_background_noise_` folder is skipped on purpose — DEMAND covers ambience. The MUSAN `speech` and `music` sources share one pinned archive and each selects only its own subtree (`musan/noise` belongs to `fetch-noise`). LibriSpeech FLACs and ESC-50's 44.1 kHz stereo WAVs are converted to 16 kHz mono WAV with `ffmpeg`. These downloads are network steps like TTS and `fetch-noise` (300 s timeout). No metadata rows are added for these clips; the download is cached nowhere — rerun with the same seed for a reproducible selection.
 
 ### Real-world noise (DEMAND)
 

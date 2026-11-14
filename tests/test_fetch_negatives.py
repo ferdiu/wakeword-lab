@@ -1,3 +1,5 @@
+import dataclasses
+import hashlib
 import io
 import tarfile
 import wave
@@ -208,15 +210,15 @@ def test_fetch_full_count_larger_than_archive_returns_every_clip(tmp_path):
     assert {path.name.split("__")[0] for path in paths} == {"sc_up", "sc_down"}
 
 
-def _librispeech_archive(speakers=("111", "222"), per_chapter=3):
-    """Mirror the real test-clean layout:
-    LibriSpeech/test-clean/<speaker>/<chapter>/<clip>.flac plus shallow
+def _librispeech_archive(speakers=("111", "222"), per_chapter=3, subset="test-clean"):
+    """Mirror the real LibriSpeech layout:
+    LibriSpeech/<subset>/<speaker>/<chapter>/<clip>.flac plus shallow
     non-FLAC files."""
     entries = [("LibriSpeech/README.TXT", b"not audio")]
     for speaker in speakers:
         for index in range(per_chapter):
             entries.append(
-                (f"LibriSpeech/test-clean/{speaker}/11/{speaker}-{index}.flac",
+                (f"LibriSpeech/{subset}/{speaker}/11/{speaker}-{index}.flac",
                  b"fLaC-fake"))
     return _tar_gz_bytes(entries)
 
@@ -296,3 +298,172 @@ def test_rerun_with_different_source_keeps_other_source_files(tmp_path, monkeypa
     names = sorted(p.name for p in (project / "data/raw/negative").glob("*.wav"))
     assert sum(name.startswith("sc_") for name in names) == 2
     assert sum(name.startswith("ls_") for name in names) == 2
+
+
+def _musan_archive():
+    """Mirror the real musan.tar.gz layout: speech/, music/ and noise/
+    subtrees plus a non-WAV member; each source must select only its own
+    subtree (noise/ belongs to fetch-noise)."""
+    entries = []
+    for sub, count in (("librivox", 4), ("us-gov", 4)):
+        for index in range(count):
+            entries.append((f"musan/speech/{sub}/clip_{index:04d}.wav", b"RIFF-fake-wav"))
+    for sub, count in (("fma", 3), ("jamendo", 3)):
+        for index in range(count):
+            entries.append((f"musan/music/{sub}/clip_{index:04d}.wav", b"RIFF-fake-wav"))
+    for index in range(2):
+        entries.append((f"musan/noise/sound-bible/clip_{index:04d}.wav", b"RIFF-fake-wav"))
+    entries.append(("musan/README", b"not audio"))
+    return _tar_gz_bytes(entries)
+
+
+def test_fetch_musan_speech_selects_only_speech_subtree(tmp_path, capsys):
+    project = _project(tmp_path)
+    payload = _musan_archive()
+    paths = fetch_negatives.fetch_negatives(
+        project, count=4, seed=1, source="musan-speech",
+        downloader=_fake_downloader(payload))
+
+    assert len(paths) == 4
+    names = sorted(path.name for path in paths)
+    assert all(name.startswith("ms_") and "__" in name for name in names)
+    # The music/ and noise/ subtrees belong to other sources; never selected.
+    assert not any("music" in name or "noise" in name for name in names)
+    # Collections are the balance groups, uniform round-robin across them.
+    per_collection = {}
+    for name in names:
+        collection = name[len("ms_"):].split("__")[0]
+        per_collection[collection] = per_collection.get(collection, 0) + 1
+    assert per_collection == {"librivox": 2, "us-gov": 2}
+    assert not any("README" in name for name in names)
+    summary = capsys.readouterr().out
+    assert "librivox: 2" in summary and "us-gov: 2" in summary
+
+
+def test_fetch_musan_music_selects_only_music_subtree(tmp_path):
+    project = _project(tmp_path)
+    payload = _musan_archive()
+    paths = fetch_negatives.fetch_negatives(
+        project, count=4, seed=1, source="musan-music",
+        downloader=_fake_downloader(payload))
+
+    assert len(paths) == 4
+    names = sorted(path.name for path in paths)
+    assert all(name.startswith("mm_") and "__" in name for name in names)
+    assert not any("speech" in name or "noise" in name for name in names)
+    per_collection = {}
+    for name in names:
+        collection = name[len("mm_"):].split("__")[0]
+        per_collection[collection] = per_collection.get(collection, 0) + 1
+    assert per_collection == {"fma": 2, "jamendo": 2}
+
+
+def test_fetch_musan_count_larger_than_archive_returns_every_clip(tmp_path):
+    project = _project(tmp_path)
+    payload = _musan_archive()
+    paths = fetch_negatives.fetch_negatives(
+        project, count=50, seed=1, source="musan-music",
+        downloader=_fake_downloader(payload))
+    # Only the 6 music clips exist; the fetch returns all of them.
+    assert len(paths) == 6
+    assert {path.name.split("__")[0] for path in paths} == {"mm_fma", "mm_jamendo"}
+
+
+def test_fetch_librispeech_train_converts_flac_with_speaker_prefix_names(tmp_path, monkeypatch):
+    project = _project(tmp_path)
+    calls = _fake_ffmpeg(monkeypatch)
+    payload = _librispeech_archive(speakers=("111", "222"), per_chapter=3,
+                                   subset="train-clean-100")
+    paths = fetch_negatives.fetch_negatives(
+        project, count=4, seed=1, source="librispeech-train",
+        downloader=_fake_downloader(payload))
+
+    assert len(paths) == 4
+    names = sorted(path.name for path in paths)
+    assert all(name.startswith("lt_") and name.endswith(".wav") for name in names)
+    assert not any(name.endswith(".flac") for name in names)
+    per_speaker = {}
+    for name in names:
+        speaker = name[len("lt_"):].split("__")[0]
+        per_speaker[speaker] = per_speaker.get(speaker, 0) + 1
+    assert per_speaker == {"111": 2, "222": 2}  # uniform across speaker folders
+    assert len(calls) == 4  # ffmpeg invoked once per selected clip
+    argv, kwargs = calls[0]
+    assert argv[0] == "ffmpeg" and argv[argv.index("-ar") + 1] == "16000"
+    assert kwargs["timeout"] == fetch_negatives.FFMPEG_TIMEOUT_S
+
+
+def _esc50_csv(categories, per_category):
+    lines = ["filename,fold,target,category,esc10,src_file,take"]
+    for target, category in enumerate(categories):
+        for index in range(per_category):
+            lines.append(f"{target}-{index}.wav,1,{target},{category},False,100000,1")
+    return "\n".join(lines).encode()
+
+
+def _esc50_archive(categories=("dog", "cat", "rain"), per_category=2):
+    """Mirror the real ESC-50-master.zip layout: audio/ WAVs, a meta CSV,
+    non-audio members, and a WAV outside audio/ that must be skipped."""
+    entries = [
+        ("ESC-50-master/README.md", b"not audio"),
+        ("ESC-50-master/meta/esc50.csv", _esc50_csv(categories, per_category)),
+        ("ESC-50-master/doc/extra.wav", b"RIFF-fake-wav"),
+    ]
+    for target in range(len(categories)):
+        for index in range(per_category):
+            entries.append((f"ESC-50-master/audio/{target}-{index}.wav", b"RIFF-fake-wav"))
+    return _zip_bytes(entries)
+
+
+def test_fetch_esc50_groups_by_csv_category_and_converts(tmp_path, monkeypatch):
+    project = _project(tmp_path)
+    calls = _fake_ffmpeg(monkeypatch)
+    payload = _esc50_archive(categories=("dog", "cat", "rain"), per_category=2)
+    paths = fetch_negatives.fetch_negatives(
+        project, count=6, seed=1, source="esc-50",
+        downloader=_fake_downloader(payload))
+
+    assert len(paths) == 6
+    names = sorted(path.name for path in paths)
+    # Names are es_<category>__<original>.wav with the .wav suffix preserved.
+    assert all(name.startswith("es_") and name.endswith(".wav") for name in names)
+    # Files outside ESC-50-master/audio/ (and non-audio members) are skipped.
+    assert not any("extra" in name or "README" in name for name in names)
+    # Balanced across the sound categories from meta/esc50.csv.
+    per_category = {}
+    for name in names:
+        category = name[len("es_"):].split("__")[0]
+        per_category[category] = per_category.get(category, 0) + 1
+    assert per_category == {"dog": 2, "cat": 2, "rain": 2}
+    # Every clip was ffmpeg-converted (44.1 kHz stereo -> 16 kHz mono WAV).
+    assert len(calls) == 6
+    argv, _ = calls[0]
+    assert argv[0] == "ffmpeg" and argv[argv.index("-ar") + 1] == "16000"
+    for path in paths:
+        with wave.open(str(path)) as stream:
+            assert stream.getframerate() == 16000 and stream.getnchannels() == 1
+
+
+def test_fetch_esc50_count_larger_than_archive_returns_every_clip(tmp_path, monkeypatch):
+    project = _project(tmp_path)
+    _fake_ffmpeg(monkeypatch)
+    payload = _esc50_archive(categories=("dog", "cat"), per_category=1)
+    paths = fetch_negatives.fetch_negatives(
+        project, count=50, seed=1, source="esc-50",
+        downloader=_fake_downloader(payload))
+    assert len(paths) == 2
+    assert {path.name.split("__")[0] for path in paths} == {"es_dog", "es_cat"}
+
+
+def test_verify_archive_hash_matches_and_fails_closed(tmp_path):
+    spec = fetch_negatives.SOURCES["musan-speech"]
+    archive = tmp_path / "musan.tar.gz"
+    archive.write_bytes(_tar_gz_bytes([("musan/speech/librivox/a.wav", b"x")]))
+    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    # The digest is computed by streaming (multi-GB archives must never be
+    # loaded into RAM); correct pin passes, wrong pin fails closed.
+    fetch_negatives._verify_archive_hash(
+        dataclasses.replace(spec, sha256=digest), archive)
+    with pytest.raises(RuntimeError, match="SHA-256 mismatch"):
+        fetch_negatives._verify_archive_hash(
+            dataclasses.replace(spec, sha256="0" * 64), archive)
